@@ -1,0 +1,2250 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using System.Linq;
+
+public class battlefield : MonoBehaviour
+{
+    // Singleton Class
+    public static battlefield instance = null;
+
+    // 필드 FSM
+    enum battlefieldstate
+    {
+        none,
+        enter,
+        init,
+        start,
+        myturn,
+        enemyturn,
+        win,
+        lose,
+        end,
+        max,
+    }
+
+    // 각 캐릭터 클래스
+    class CharObject
+    {
+        public int ID = 0;
+        public int UniqueID = 0;
+        public int Level = 0;
+        public int skillfriendship = 0;
+        public Int64 damage = 0;
+        public string skilldatas;
+        public bool isAttackEnd = false;
+        public int costumeID = 0;
+        public playerinfo.CBuff Buff;
+
+        public CharObject()
+        {
+            Buff = new playerinfo.CBuff();
+        }
+
+        public void SetData(int memoryindex)
+        {
+            playerinfo player = GameManager.instance.GetPlayerinfo();
+            if (memoryindex > 0)
+            {
+                string[] values = player.inventory_memory[memoryindex];
+                int id = int.Parse(values[(int)playerinfo.ST_Inventory_memory.id]);
+                int level = int.Parse(values[(int)playerinfo.ST_Inventory_memory.level]);
+                int skillfriendship = int.Parse(values[(int)playerinfo.ST_Inventory_memory.skillfriendship]);
+                string _skilldatas = values[(int)playerinfo.ST_Inventory_memory.skilldatas];
+                string PrivateItemInfo = player.Data_string[(int)playerinfo.ST_characterdata_string.PrivateItemInfo];
+                string _itemDatas = player.GetEquipItemPassive();
+                player.GetEmblemEffectSkillDatas(ref _skilldatas);
+                player.GetPrivateItemAddSetSkillEffectValue(PrivateItemInfo, id, ref _skilldatas);
+                int RuneSkillIndex = (int)player.Data_int[(int)playerinfo.ST_characterdata_int.RuneSkillIndex];
+                player.GetRuneSkillEffectValue(RuneSkillIndex, ref _skilldatas);
+                string[] Datas = player.Data_string[(int)playerinfo.ST_characterdata_string.GuildDungeonData].Split('#');
+                string attacks = Datas[1];
+                if (string.IsNullOrEmpty(attacks) == false)
+                {
+                    string[] divideData = attacks.Split('*');
+                    for (int count = 0; count < divideData.Length; ++count)
+                    {
+                        if (string.IsNullOrEmpty(divideData[count])) continue;
+
+                        if (divideData[count].Equals(memoryindex.ToString()))
+                        {
+                            isAttackEnd = true;
+                            break;
+                        }
+                    }
+                }
+
+                ID = id;
+                UniqueID = memoryindex;
+                Level = level;
+                skilldatas = _skilldatas;
+                skillfriendship = skillfriendship;
+
+                skilldatas = playerinfo.AddonAccessorySkillDatas(UniqueID, skilldatas);
+                Buff.SetBuff(skilldatas, _itemDatas);
+            }
+        }
+
+        public void GetTotalDamage(int id, int level, Int64 richrate, Int64 mannerrate, Int64 powerrate, playerinfo.Cteambuff teambuff, int addStatUp, string fooddatas, int picnicSkillUp, int multiTotalStatUp, string illustration, string mythStatup)
+        {
+            ProcessButton.instance.DetailDebugString_Begin(GameDataManager.BattleType.Guild, id);
+
+            Int64 baserich = Int64.Parse(GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.rich]);
+            Int64 basemanner = Int64.Parse(GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.manner]);
+            Int64 basepower = Int64.Parse(GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.power]);
+            int grade = int.Parse(GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.grade]);
+            string group = GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.group];
+
+            int type = int.Parse(GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.type]);
+
+            double addrichrate = teambuff != null ? teambuff.richrate * 0.01f : 0;
+            double addmannerrate = teambuff != null ? teambuff.mannerrate * 0.01f : 0;
+            double addpowerrate = teambuff != null ? teambuff.powerrate * 0.01f : 0;
+
+            int addedRich = GameManager.instance.GetPlayerinfo().getAddedStatByFoodItem(fooddatas, playerinfo.StatType.Rich);
+            int addedSense = GameManager.instance.GetPlayerinfo().getAddedStatByFoodItem(fooddatas, playerinfo.StatType.Sense);
+            int addedpower = GameManager.instance.GetPlayerinfo().getAddedStatByFoodItem(fooddatas, playerinfo.StatType.power);
+
+            if (type == 1)
+                basepower += Int64.Parse(mythStatup);
+            else if (type == 2)
+                baserich += Int64.Parse(mythStatup);
+            else if (type == 3)
+                basemanner += Int64.Parse(mythStatup);
+            else
+            {
+                basepower += Int64.Parse(mythStatup);
+                baserich += Int64.Parse(mythStatup);
+                basemanner += Int64.Parse(mythStatup);
+            }
+
+            Dictionary<string, int> ItemSetDict = new Dictionary<string, int>();
+            playerinfo.getItemSetDictionary(ref ItemSetDict);
+            int SetOptionRate = playerinfo.getItemSetStatRate(group, ItemSetDict);
+
+            double richRate = 0f;
+            double mannerRate = 0f;
+            double powerRate = 0f;
+            playerinfo.GetSkillStatUpRate(skilldatas, out richRate, out mannerRate, out powerRate);
+
+            baserich = (Int64)(Util.GetmultiplebyLevel_base(baserich, level, grade, skillfriendship, skilldatas, addStatUp, addedRich, picnicSkillUp, multiTotalStatUp, illustration, SetOptionRate, (int)(richRate * 100)));
+            basemanner = (Int64)(Util.GetmultiplebyLevel_base(basemanner, level, grade, skillfriendship, skilldatas, addStatUp, addedSense, picnicSkillUp, multiTotalStatUp, illustration, SetOptionRate, (int)(mannerRate * 100)));
+            basepower = (Int64)(Util.GetmultiplebyLevel_base(basepower, level, grade, skillfriendship, skilldatas, addStatUp, addedpower, picnicSkillUp, multiTotalStatUp, illustration, SetOptionRate, (int)(powerRate * 100)));
+
+            Int64 totalRich = (Int64)(((baserich) * (100 + richrate + addrichrate)) / 100);
+            Int64 totalManner = (Int64)(((basemanner) * (100 + mannerrate + addmannerrate)) / 100);
+            Int64 totalpower = (Int64)(((basepower) * (100 + powerrate + addpowerrate)) / 100);
+            damage = totalRich + totalManner + totalpower;
+
+            ProcessButton.instance.SetDebugString_DetailBaseDamage(detailBaseDamageDebugstring);
+            ProcessButton.instance.DetailDebugString_End();
+        }
+
+        public bool isAttackAble()
+        {
+            if (isAttackEnd == false && ID > 0)
+                return true;
+            else
+                return false;
+        }
+
+        public void UpdateData()
+        {
+            if (UniqueID > 0)
+            {
+                string[] Datas = GameManager.instance.GetPlayerinfo().Data_string[(int)playerinfo.ST_characterdata_string.GuildDungeonData].Split('#');
+                string attacks = Datas[1];
+                if (string.IsNullOrEmpty(attacks) == false)
+                {
+                    isAttackEnd = false;
+                    string[] divideData = attacks.Split('*');
+                    for (int count = 0; count < divideData.Length; ++count)
+                    {
+                        if (string.IsNullOrEmpty(divideData[count])) continue;
+
+                        if (divideData[count].Equals(UniqueID.ToString()))
+                        {
+                            isAttackEnd = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 캐릭터 그룹
+    class Team
+    {
+        public List<Object> Objects = new List<Object>();
+
+        public int TurnIdex = 0;
+        public Int64 MaxHP = 0;
+        public Int64 BaseHP = 0;
+        public Int64 CurHP = 0;
+        public Int64 CurHP2 = 0;
+        public int hpTickcount = 0;
+        public bool bfirstattack = true;
+        //public string userid;
+        public int teamCriCount = 0;
+        public Int64 addDamage = 0;
+        public int bestdamageturn = 0;
+        public int lastAttackIndex = -1;
+        public string itemPassive = "";
+        public string illustration = "";
+        public string totalUseSkillValueDatas = "";
+        public string PrivateItemInfo = "";
+
+        public playerinfo.Cteambuff teambuff;
+        
+        public Object GetMyTurn()
+        {
+            return Objects[TurnIdex];
+        }
+
+        public void setbestturn()
+        {
+            Int64 bestdamage = 0;
+            bestdamageturn = 0;
+
+            for (int count = 0; count < Objects.Count; ++count)
+            {
+                if(Objects[count].damage > bestdamage)
+                {
+                    bestdamage = Objects[count].damage;
+                    bestdamageturn = count;
+                }
+            }
+        }
+
+        public Object GetObject(int index)
+        {
+            if (Objects.Count - 1 < index)
+                return Objects[0];
+
+            return Objects[index];
+        }
+
+        public void SetNextTurn()
+        {
+            int tempIndex = lastAttackIndex == -1 ? 0 : lastAttackIndex;
+            Object temp = null;
+
+            for (int count = 0; count < Objects.Count; ++count)
+            {
+                if (tempIndex <= Objects.Count - 1)
+                    temp = Objects[tempIndex];
+
+                if (temp == null)
+                {
+                    TurnIdex = tempIndex;
+                    break;
+                }
+
+                if (temp.isAttackAble())
+                {
+                    TurnIdex = tempIndex;
+                    break;
+                }
+
+                ++tempIndex;
+
+                if (tempIndex >= Objects.Count)
+                    tempIndex = 0;
+            }
+
+            SoundManager.Instance.Play(SoundType.Voice_Start + Objects[TurnIdex].ID);
+        }
+
+        public bool IsEndTurn()
+        {
+            string[] Datas = GameManager.instance.GetPlayerinfo().Data_string[(int)playerinfo.ST_characterdata_string.GuildDungeonData].Split('#');
+            string attacks = Datas[1];
+            string[] divideData = attacks.Split('*');
+
+            int attackCount = 0;
+
+            for (int count = 0; count < divideData.Length; ++count)
+            {
+                if (string.IsNullOrEmpty(divideData[count]))
+                    continue;
+
+                attackCount++;
+            }
+
+            if (attackCount >= 30)
+                return true;
+
+            for (int count = 0; count < Objects.Count; ++count)
+            {
+                if (Objects[count].isAttackAble())
+                    return false;
+            }
+
+            return true;
+        }
+
+        public void SetData(List<KeyValuePair<long, int>> List)
+        {
+            Objects.Clear();
+            List<string> skillDatas = new List<string>();
+
+            for (int count = 0; count < List.Count; ++count)
+            {
+                Object obj = new Object();
+
+                obj.SetData(List[count].Value);
+                Objects.Add(obj);
+                skillDatas.Add(obj.skilldatas);
+            }
+
+            itemPassive = GameManager.instance.GetPlayerinfo().GetEquipItemPassive();
+            teambuff = playerinfo.setteambuff(skillDatas, itemPassive);
+
+            playerinfo player = GameManager.instance.GetPlayerinfo();
+            player.groupstatup.calculatedata();
+            player.SkillEffectUp.calculatedata();
+            player.initPicnicSkillEffect();
+
+            double totalrichrate = 0;
+            double totalmannerrate = 0;
+            double totalpowerrate = 0;
+
+            for (int count = 0; count < Objects.Count; ++count)
+            {
+                int ID = Objects[count].ID;
+                if (ID > 0)
+                {
+                    string id = GameDataManager.someTemplate[ID, (int)GameDataManager.someTemplate_.ID];
+                    string group = GameDataManager.someTemplate[ID, (int)GameDataManager.someTemplate_.group];
+                    string grade = GameDataManager.someTemplate[ID, (int)GameDataManager.someTemplate_.grade];
+                    string type = GameDataManager.someTemplate[ID, (int)GameDataManager.someTemplate_.type];
+
+                    int addstatup = player.GetAddStatUp(group, grade, ID, Objects[count].UniqueID);
+                    int multiTotalStatUp = player.SkillEffectUp.GetAddSkillEffect(ID);
+                    multiTotalStatUp += player.SkillEffectUp.GetAddSkillEffectGroup(ID);
+                    string fooddatas = player.inventory_memory[Objects[count].UniqueID][(int)playerinfo.ST_Inventory_memory.fooddatas];
+                    string mythStatup = player.inventory_memory[Objects[count].UniqueID][(int)playerinfo.ST_Inventory_memory.mythStatup];
+
+                    int addPicnicSkillUp = player.getPicnicSkillEffect(ID.ToString(), group);
+                    string outItemPassive = "";
+                    string outillustration = player.Getillustration(ID);
+
+                    player.GetEquipItemStat(group, out totalpowerrate, out totalrichrate, out totalmannerrate, out outItemPassive);
+                    Objects[count].GetTotalDamage(ID, Objects[count].Level, (Int64)totalrichrate, (Int64)totalmannerrate, (Int64)totalpowerrate, teambuff, addstatup
+                        , fooddatas, addPicnicSkillUp, multiTotalStatUp, outillustration, mythStatup);
+                    //this.itemPassive = outItemPassive;
+                    illustration = outillustration;
+                }
+            }
+        }
+    }
+
+    // 몬스터 클래스
+    class Monster
+    {
+        public Monster()
+        {
+            monsterBuff = new playerinfo.CBuff();
+        }
+
+        public void SetData(string dungeonIndex, string curhp, string maxHP)
+        {
+            int index = int.Parse(dungeonIndex);
+            string _hp = maxHP;
+
+            MaxHP = Int64.Parse(_hp);
+            BaseHP = Int64.Parse(_hp);
+            CurHP2 = CurHP = Int64.Parse(curhp);
+            this.dungeonIndex = int.Parse(dungeonIndex);
+            monsterBuff.SetBuff("", string.Empty);
+            teambuff = playerinfo.setteambuff("", "", "", "");
+        }
+        public int dungeonIndex = 0;
+        public Int64 MaxHP = 0;
+        public Int64 BaseHP = 0;
+        public Int64 CurHP = 0;
+        public Int64 CurHP2 = 0;
+        public int hpTickcount = 0;
+
+        public playerinfo.CBuff monsterBuff;
+        public playerinfo.Cteambuff teambuff;
+    }
+
+    // 배틀 부분 구성.
+    public GameObject PVPFieldObj = null;
+    public GameObject parentObj = null;
+    public GameObject popup = null;
+
+    System.Random random = new System.Random();
+    
+    Team MyTeam = null;
+    Monster monster = null;
+
+    private bool isPlayAttack = false;
+    private bool isOnDamage = false;
+    private bool isMonsterDead = false;
+
+    private int myattackcount = 0;
+    private int currentDungeonIndex = 0;
+    private bool bAutoPlay = false;
+    private bool isAutoAttacking = false;
+
+    void Awake()
+    {
+        if (instance == null)
+        {
+            instance = this;
+        }
+        else if (instance != this)
+        {
+            Destroy(gameObject);
+        }
+    }
+
+    void Update()
+    {
+        if (isOnDamage)
+        {
+            if (!PVPFieldObj)
+                return;
+
+            if (monster.CurHP2 > monster.CurHP)
+            {
+                monster.hpTickcount++;
+
+                if (monster.hpTickcount > 30)
+                {
+                    Int64 gap = (monster.CurHP2 - monster.CurHP) / 20;
+                    if (gap == 0)
+                        gap = 1;
+                    if (monster.CurHP2 - gap < monster.CurHP)
+                        gap = monster.CurHP2 - monster.CurHP;
+
+                    monster.CurHP2 -= gap;
+
+                    var enemyGage = PVPFieldObj.transform.Find("Enemy/Enemy/HP/Gage2").GetComponent<UIProgressBar>();
+                    enemyGage.value = (float)((double)monster.CurHP2 / (double)monster.MaxHP);
+                }
+            }
+            else
+            {
+                monster.hpTickcount = 0;
+                isOnDamage = false;
+            }
+
+            if(monster.dungeonIndex != 9)
+                Updatehp();
+            updatestate();
+        }
+
+        AutoPlay();
+    }
+
+    void OnDestroy()
+    {
+        instance = null;
+    }
+
+    public void Init(GameObject obj, string dungeonindex_, string hp, string maxHP)
+    {
+        if (PVPFieldObj) return;
+        PVPFieldObj = ProcessButton.instance.GetPrefabs("PvpContents/monsterPVP");
+
+        ProcessButton.instance.OnMain(false);
+
+        MyTeam = new Team();
+        monster = new Monster();
+
+        bAutoPlay = false;
+        isAutoAttacking = false;
+
+        currentDungeonIndex = int.Parse(dungeonindex_);
+
+        playerinfo player = GameManager.instance.GetPlayerinfo();
+        player.groupstatup.calculatedata();
+        player.SkillEffectUp.calculatedata();
+        player.initPicnicSkillEffect();
+
+        int addHPStat_skill = 0;        
+        Dictionary<Int64, int> sortdic = new Dictionary<Int64, int>();
+        MyTeam.PrivateItemInfo = player.Data_string[(int)playerinfo.ST_characterdata_string.PrivateItemInfo];
+        foreach (KeyValuePair<int, string[]> items in player.inventory_memory)
+        {
+            string[] values = items.Value;
+            int id = int.Parse(values[(int)playerinfo.ST_Inventory_memory.id]);
+            if (id <= 0) continue;
+            string[] Lab = values[(int)playerinfo.ST_Inventory_memory.Lab].Split('*');
+            if (Lab.Length >= 2) continue;
+            int index = int.Parse(values[(int)playerinfo.ST_Inventory_memory.index]);
+            int level = int.Parse(values[(int)playerinfo.ST_Inventory_memory.level]);
+            int skillfriendship = int.Parse(values[(int)playerinfo.ST_Inventory_memory.skillfriendship]);
+            string skilldatas = values[(int)playerinfo.ST_Inventory_memory.skilldatas];
+            skilldatas = playerinfo.AddonAccessorySkillDatas(index, skilldatas);
+            player.GetEmblemEffectSkillDatas(ref skilldatas);
+            player.GetPrivateItemAddSetSkillEffectValue(MyTeam.PrivateItemInfo, id, ref skilldatas);
+            int RuneSkillIndex = (int)player.Data_int[(int)playerinfo.ST_characterdata_int.RuneSkillIndex];
+            player.GetRuneSkillEffectValue(RuneSkillIndex, ref skilldatas);
+            int mythStatup = int.Parse(values[(int)playerinfo.ST_Inventory_memory.mythStatup]);
+
+
+            string grade = GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.grade];
+            string rich = GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.rich];
+            string manner = GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.manner];
+            string power = GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.power];
+            string group = GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.group];
+            int type = int.Parse(GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.type]);
+
+            int addstatup = GetAddStatUp(id, index);
+            int multiTotalStatUp = player.SkillEffectUp.GetAddSkillEffect(id);
+            multiTotalStatUp += player.SkillEffectUp.GetAddSkillEffectGroup(id);
+            addHPStat_skill += player.GetTotalUseSkilldatasValue(skilldatas, playerinfo.skillconditiontype.maxHP_add);
+
+            string fooddatas = values[(int)playerinfo.ST_Inventory_memory.fooddatas];
+            int addedRich = player.getAddedStatByFoodItem(fooddatas, playerinfo.StatType.Rich);
+            int addedSense = player.getAddedStatByFoodItem(fooddatas, playerinfo.StatType.Sense);
+            int addedpower = player.getAddedStatByFoodItem(fooddatas, playerinfo.StatType.power);
+
+            int addPicnicSkillUp = player.getPicnicSkillEffect(id.ToString(), group);
+            string illustration = player.Getillustration(id);            
+            Dictionary<string, int> ItemSetDict = new Dictionary<string, int>();
+            playerinfo.getItemSetDictionary(ref ItemSetDict);
+            int SetOptionRate = playerinfo.getItemSetStatRate(group, ItemSetDict);
+
+            if (type == 1)
+                power = (int.Parse(power) + mythStatup).ToString();
+            else if (type == 2)
+                rich = (int.Parse(rich) + mythStatup).ToString();
+            else if (type == 3)
+                manner = (int.Parse(manner) + mythStatup).ToString();
+            else
+            {
+                power = (int.Parse(power) + mythStatup).ToString();
+                rich = (int.Parse(rich) + mythStatup).ToString();
+                manner = (int.Parse(manner) + mythStatup).ToString();
+            }
+
+            double richRate = 0f;
+            double mannerRate = 0f;
+            double powerRate = 0f;
+            playerinfo.GetSkillStatUpRate(skilldatas, out richRate, out mannerRate, out powerRate);
+
+            Int64 sumpoint = 0;
+            sumpoint += (Int64)(Util.GetmultiplebyLevel_base(Int64.Parse(rich), level, int.Parse(grade), skillfriendship, skilldatas, addstatup, addedRich, addPicnicSkillUp, multiTotalStatUp, illustration, SetOptionRate, (int)(richRate * 100)));
+            sumpoint += (Int64)(Util.GetmultiplebyLevel_base(Int64.Parse(manner), level, int.Parse(grade), skillfriendship, skilldatas, addstatup, addedSense, addPicnicSkillUp, multiTotalStatUp, illustration, SetOptionRate, (int)(mannerRate * 100)));
+            sumpoint += (Int64)(Util.GetmultiplebyLevel_base(Int64.Parse(power), level, int.Parse(grade), skillfriendship, skilldatas, addstatup, addedpower, addPicnicSkillUp, multiTotalStatUp, illustration, SetOptionRate, (int)(powerRate * 100)));
+
+            foreach (KeyValuePair<Int64, int> data in sortdic)
+            {
+                if (data.Key == sumpoint)
+                {
+                    sumpoint++;
+                }
+            }
+
+            if(sortdic.ContainsKey(sumpoint) == false)
+                sortdic.Add(sumpoint, index);
+        }
+        List<KeyValuePair<Int64, int>> sortList = sortdic.ToList();
+        sortList.Sort(delegate (KeyValuePair<Int64, int> pair1, KeyValuePair<Int64, int> pair2)
+        {
+            return pair1.Key.CompareTo(pair2.Key);
+        });
+        sortList.Reverse();
+
+        List<KeyValuePair<Int64, int>> List = sortList;
+
+        int SkillLimitCount = int.Parse(GameDataManager.systemdataTemplate[(int)GameDataManager.systemdataid.SkillLimitCount, (int)GameDataManager.systemdataTemplate_.value1]);
+        Dictionary<int, int> limit = new Dictionary<int, int>();
+        List<KeyValuePair<Int64, int>> DelList = new List<KeyValuePair<long, int>>();
+        foreach (var in List)
+        {
+            string[] values = player.inventory_memory[.Value];
+            int id = int.Parse(values[(int)playerinfo.ST_Inventory_memory.id]);
+            string skilldatas = values[(int)playerinfo.ST_Inventory_memory.skilldatas];
+
+            if (player.IsSkilldatasInConditionType(skilldatas, playerinfo.skillconditiontype.teambuff_richrate))
+            {
+                if (!limit.ContainsKey(id))
+                    limit.Add(id, 1);
+                else if (limit.ContainsKey(id) && limit[id] < SkillLimitCount)
+                    ++limit[id];
+                else
+                    DelList.Add();
+            }
+            if (player.IsSkilldatasInConditionType(skilldatas, playerinfo.skillconditiontype.teambuff_mannerrate))
+            {
+                if (!limit.ContainsKey(id))
+                    limit.Add(id, 1);
+                else if (limit.ContainsKey(id) && limit[id] < SkillLimitCount)
+                    ++limit[id];
+                else
+                    DelList.Add();
+            }
+            if (player.IsSkilldatasInConditionType(skilldatas, playerinfo.skillconditiontype.teambuff_powerrate))
+            {
+                if (!limit.ContainsKey(id))
+                    limit.Add(id, 1);
+                else if (limit.ContainsKey(id) && limit[id] < SkillLimitCount)
+                    ++limit[id];
+                else
+                    DelList.Add();
+            }
+        }
+
+        foreach (var delItem in DelList)
+        {
+            List.Remove(delItem);
+        }
+
+        MyTeam.SetData(List);
+        MyTeam.setbestturn();
+
+        MyTeam.BaseHP = MyTeam.MaxHP = CalcMyHP();
+
+        addHPStat_skill += player.GetItemPassive(MyTeam.itemPassive, playerinfo.skillconditiontype.maxHP_add);
+        addHPStat_skill += player.GetPrivateItemSetSkillEffectValue(MyTeam.PrivateItemInfo, playerinfo.skillconditiontype.maxHP_add);
+        MyTeam.CurHP = MyTeam.CurHP2 = MyTeam.MaxHP = MyTeam.MaxHP + (Int64)(MyTeam.MaxHP * (addHPStat_skill / 10000.0f));
+
+        MyTeam.addDamage = (Int64)(MyTeam.MaxHP * 0.01f);
+        MyTeam.CurHP = MyTeam.CurHP2 = MyTeam.Objects.Count * MyTeam.MaxHP / MyTeam.Objects.Count;
+        PVPFieldObj.transform.Find("PC/Id").GetComponent<UILabel>().text = GameManager.instance.GetPlayerinfo().Data_string[(int)playerinfo.ST_characterdata_string.nickname];
+        MyTeam.teamCriCount = 0;
+
+        myattackcount = 0;
+
+        string[] Datas = GameManager.instance.GetPlayerinfo().Data_string[(int)playerinfo.ST_characterdata_string.GuildDungeonData].Split('#');
+        string[] criticalCounts = Datas[2].Split('*');
+        string strCriCount = criticalCounts[currentDungeonIndex];
+        if (string.IsNullOrEmpty(strCriCount) == false)
+            MyTeam.teamCriCount = int.Parse(strCriCount);
+
+        isPlayAttack = false;
+        isOnDamage = false;
+
+        if (Int64.Parse(hp) <= 0)
+            isMonsterDead = true;
+        else
+            isMonsterDead = false;
+
+        monster.SetData(dungeonindex_, hp, maxHP);
+
+        UIScrollView scrollView = PVPFieldObj.transform.Find("PC/ScrollView").GetComponent<UIScrollView>();
+        ScrollWrapper wrapperGrid = scrollView.transform.Find("WrapperGrid").GetComponent<ScrollWrapper>();
+
+        if (wrapperGrid.Grid.GetChildList(wrapperGrid).Count > 0)
+        {
+            wrapperGrid.Resize(MyTeam.Objects.Count);
+            wrapperGrid.RefreshAllItems();
+        }
+        else
+        {
+            GameObject gridobj = ProcessButton.instance.GetPrefab("gridItems/MonsterPvP_Item");
+
+            wrapperGrid.SetClickCallback(OnClickPortrait);
+            wrapperGrid.SetRefreshCallback(OnRefreshPortrait);
+            wrapperGrid.SpawnNewList(gridobj, MyTeam.Objects.Count, 0f);
+        }
+
+        parentObj = obj;
+        if (parentObj)
+            parentObj.gameObject.SetActive(false);
+
+        SetBattleField();
+        if(monster.dungeonIndex != 9)
+            PVPFieldObj.transform.Find("Enemy/Enemy/HP").gameObject.SetActive(true);
+        else
+            PVPFieldObj.transform.Find("Enemy/Enemy/HP").gameObject.SetActive(false);
+        BackKeyManager.SetBackKeyAction(PVPFieldObj.transform.Find("PC/ButtonExit").GetComponent<UIButton>());
+    }
+
+    public void UpdateData()
+    {
+        for (int count = 0; count < MyTeam.Objects.Count; ++count)
+        {
+            MyTeam.GetObject(count).UpdateData();
+        }
+
+        string[] Datas = GameManager.instance.GetPlayerinfo().Data_string[(int)playerinfo.ST_characterdata_string.GuildDungeonData].Split('#');
+        string attacks = Datas[1];
+        string[] criCounts = Datas[2].Split('*');
+
+        PVPFieldObj.transform.Find("PC/ScrollView/WrapperGrid").GetComponent<ScrollWrapper>().RefreshAllItems();
+        MyTeam.CurHP = MyTeam.CurHP2 = MyTeam.Objects.Count * MyTeam.MaxHP / MyTeam.Objects.Count;
+        MyTeam.teamCriCount = int.Parse(criCounts[currentDungeonIndex]);
+
+        string[] divideData = attacks.Split('*');
+
+        int attackCount = 0;
+
+        for (int count = 0; count < divideData.Length; ++count)
+        {
+            if (string.IsNullOrEmpty(divideData[count]))
+                continue;
+
+            attackCount++;
+        }
+
+        PVPFieldObj.transform.Find("PC/AttackCount").GetComponent<UILabel>().text = string.Format(TextManager.Instance.GetString("BTF_TEXT_0001"), attackCount, 30);
+    }
+
+    private Int64 CalcMyHP()
+    {
+        double totalrich = 0;
+        double totalmanner = 0;
+        double totalpower = 0;
+
+        double totalrichrate = 0;
+        double totalmannerrate = 0;
+        double totalpowerrate = 0;
+
+        var getplayerinfo = GameManager.instance.GetPlayerinfo();
+
+        foreach (KeyValuePair<int, string[]> items in getplayerinfo.inventory_memory)
+        {
+            string[] valuesmemory = items.Value;
+            int memory_id = int.Parse(valuesmemory[(int)playerinfo.ST_Inventory_memory.id]);
+            int memory_index = int.Parse(valuesmemory[(int)playerinfo.ST_Inventory_memory.index]);
+            int level = int.Parse(valuesmemory[(int)playerinfo.ST_Inventory_memory.level]);
+            int skillfriendship = int.Parse(valuesmemory[(int)playerinfo.ST_Inventory_memory.skillfriendship]);
+            string skilldatas = valuesmemory[(int)playerinfo.ST_Inventory_memory.skilldatas];
+            skilldatas = playerinfo.AddonAccessorySkillDatas(memory_index, skilldatas);
+            getplayerinfo.GetEmblemEffectSkillDatas(ref skilldatas);
+            getplayerinfo.GetPrivateItemAddSetSkillEffectValue(MyTeam.PrivateItemInfo, memory_id, ref skilldatas);
+            int RuneSkillIndex = (int)getplayerinfo.Data_int[(int)playerinfo.ST_characterdata_int.RuneSkillIndex];
+            getplayerinfo.GetRuneSkillEffectValue(RuneSkillIndex, ref skilldatas);
+            int mythStatup = int.Parse(valuesmemory[(int)playerinfo.ST_Inventory_memory.mythStatup]);
+
+            if (memory_id <= 0) continue;
+
+            string rich = GameDataManager.someTemplate[memory_id, (int)GameDataManager.someTemplate_.rich];
+            string manner = GameDataManager.someTemplate[memory_id, (int)GameDataManager.someTemplate_.manner];
+            string power = GameDataManager.someTemplate[memory_id, (int)GameDataManager.someTemplate_.power];
+            string grade = GameDataManager.someTemplate[memory_id, (int)GameDataManager.someTemplate_.grade];
+            string group = GameDataManager.someTemplate[memory_id, (int)GameDataManager.someTemplate_.group];
+            int type = int.Parse(GameDataManager.someTemplate[memory_id, (int)GameDataManager.someTemplate_.type]);
+
+            int addStatUp = getplayerinfo.GetAddStatUp(group, grade, memory_id, memory_index);
+            int multiTotalStatUp = getplayerinfo.SkillEffectUp.GetAddSkillEffect(memory_id);
+            multiTotalStatUp += getplayerinfo.SkillEffectUp.GetAddSkillEffectGroup(memory_id);
+
+            string fooddatas = valuesmemory[(int)playerinfo.ST_Inventory_memory.fooddatas];
+            int addedRich = getplayerinfo.getAddedStatByFoodItem(fooddatas, playerinfo.StatType.Rich);
+            int addedSense = getplayerinfo.getAddedStatByFoodItem(fooddatas, playerinfo.StatType.Sense);
+            int addedpower = getplayerinfo.getAddedStatByFoodItem(fooddatas, playerinfo.StatType.power);
+
+            int addPicnicSkillUp = getplayerinfo.getPicnicSkillEffect(memory_id.ToString(), group);
+            string illustration = getplayerinfo.Getillustration(memory_id);
+            Dictionary<string, int> ItemSetDict = new Dictionary<string, int>();
+            playerinfo.getItemSetDictionary(ref ItemSetDict);
+            int SetOptionRate = playerinfo.getItemSetStatRate(group, ItemSetDict);
+
+            if (type == 1)
+                power = (int.Parse(power) + mythStatup).ToString();
+            else if (type == 2)
+                rich = (int.Parse(rich) + mythStatup).ToString();
+            else if (type == 3)
+                manner = (int.Parse(manner) + mythStatup).ToString();
+            else
+            {
+                power = (int.Parse(power) + mythStatup).ToString();
+                rich = (int.Parse(rich) + mythStatup).ToString();
+                manner = (int.Parse(manner) + mythStatup).ToString();
+            }
+
+            double richRate = 0f;
+            double mannerRate = 0f;
+            double powerRate = 0f;
+            playerinfo.GetSkillStatUpRate(skilldatas, out richRate, out mannerRate, out powerRate);
+
+            if (int.Parse(rich) > 0) totalrich += Util.GetmultiplebyLevel_base(Int64.Parse(rich), level, int.Parse(grade), skillfriendship, skilldatas, addStatUp, addedRich, addPicnicSkillUp, multiTotalStatUp, illustration, SetOptionRate, (int)(richRate * 100));
+            if (int.Parse(manner) > 0) totalmanner += Util.GetmultiplebyLevel_base(Int64.Parse(manner), level, int.Parse(grade), skillfriendship, skilldatas, addStatUp, addedSense, addPicnicSkillUp, multiTotalStatUp, illustration, SetOptionRate, (int)(mannerRate * 100));
+            if (int.Parse(power) > 0) totalpower += Util.GetmultiplebyLevel_base(Int64.Parse(power), level, int.Parse(grade), skillfriendship, skilldatas, addStatUp, addedpower, addPicnicSkillUp, multiTotalStatUp, illustration, SetOptionRate, (int)(powerRate * 100));
+        }
+
+        for (int i = 1; i <= 6; i++)
+        {
+            Int64 slotitemindex = getplayerinfo.Data_int[(int)playerinfo.ST_characterdata_int.itemslot_1 + i - 1];
+            if (slotitemindex > 0)
+            {
+                int[] valuesslot = getplayerinfo.inventory_item[(int)slotitemindex];
+
+                int slot_id = valuesslot[(int)playerinfo.ST_Inventory_items.id];
+                //int invenslot = valuesslot[(int)playerinfo.ST_Inventory_items.invenslot];
+                int level = valuesslot[(int)playerinfo.ST_Inventory_items.level];
+
+                if (slot_id <= 0) continue;
+                int bigType = int.Parse(GameDataManager.itemTemplate[slot_id, (int)GameDataManager.itemTemplate_.bigtype]);
+                string rich = GameDataManager.itemTemplate[slot_id, (int)GameDataManager.itemTemplate_.rich];
+                string manner = GameDataManager.itemTemplate[slot_id, (int)GameDataManager.itemTemplate_.manner];
+                string power = GameDataManager.itemTemplate[slot_id, (int)GameDataManager.itemTemplate_.power];
+
+                string richrate = GameDataManager.itemTemplate[slot_id, (int)GameDataManager.itemTemplate_.richrate];
+                string mannerrate = GameDataManager.itemTemplate[slot_id, (int)GameDataManager.itemTemplate_.mannerrate];
+                string powerrate = GameDataManager.itemTemplate[slot_id, (int)GameDataManager.itemTemplate_.powerrate];
+
+                if (int.Parse(rich) > 0) totalrich += Util.GetmultiplebyLevel_base(Int64.Parse(rich), level, 0, 0, "", 0, 0, 0, 0, "");
+                if (int.Parse(manner) > 0) totalmanner += Util.GetmultiplebyLevel_base(Int64.Parse(manner), level, 0, 0, "", 0, 0, 0, 0, "");
+                if (int.Parse(power) > 0) totalpower += Util.GetmultiplebyLevel_base(Int64.Parse(power), level, 0, 0, "", 0, 0, 0, 0, "");
+
+                if (int.Parse(richrate) > 0) totalrichrate += Util.GetmultiplebyLevelItem_base(Int64.Parse(richrate), level, bigType);
+                if (int.Parse(mannerrate) > 0) totalmannerrate += Util.GetmultiplebyLevelItem_base(Int64.Parse(mannerrate), level, bigType);
+                if (int.Parse(powerrate) > 0) totalpowerrate += Util.GetmultiplebyLevelItem_base(Int64.Parse(powerrate), level, bigType);
+            }
+        }
+
+        Int64 baserich = getplayerinfo.Data_int[(int)playerinfo.ST_characterdata_int.stat_rich];
+        Int64 basemanner = getplayerinfo.Data_int[(int)playerinfo.ST_characterdata_int.stat_manner];
+        Int64 basepower = getplayerinfo.Data_int[(int)playerinfo.ST_characterdata_int.stat_power];
+        Int64 babyStat = playerinfo.GetBabyStat() / 10;
+        return (Int64)((baserich + totalrich) * ((100 + totalrichrate) / 100)) + (Int64)((basemanner + totalmanner) * ((100 + totalmannerrate) / 100)) + (Int64)((basepower + totalpower) * ((100 + totalpowerrate) / 100)) + babyStat;
+    }
+
+    private void settingbase(int id, int Index, int level, Int64 damage, string group, int friendship, string skilldatas)
+    {
+        string rich = GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.rich];
+        string manner = GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.manner];
+        string power = GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.power];
+
+        string name = GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.name];
+        string grade = GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.grade];
+
+        int costumeID = GameManager.instance.GetPlayerinfo().GetEquipCostume(Index);
+        PVPFieldObj.transform.Find(group + "//Back/Pc").GetComponent<SetTexture>().SetTexture(id, costumeID);
+
+        PVPFieldObj.transform.Find(group + "//Back").GetComponent<TweenPosition>().PlayReverse();
+        PVPFieldObj.transform.Find(group + "/State/State1/BonusStat1").GetComponent<UILabel>().text = "+" + ProcessButton.instance.GetOverNumString(Int64.Parse(rich));
+        PVPFieldObj.transform.Find(group + "/State/State2/BonusStat1").GetComponent<UILabel>().text = "+" + ProcessButton.instance.GetOverNumString(Int64.Parse(manner));
+        PVPFieldObj.transform.Find(group + "/State/State3/BonusStat1").GetComponent<UILabel>().text = "+" + ProcessButton.instance.GetOverNumString(Int64.Parse(power));
+
+        string leveldesc = "";
+        if (level > 1) leveldesc = " +" + level;
+        PVPFieldObj.transform.Find(group + "/State/Label").GetComponent<UILabel>().text = name + leveldesc;
+        PVPFieldObj.transform.Find(group + "/State/Star").GetComponent<UISprite>().spriteName = "Star" + grade;
+
+        GameManager.instance.GetPlayerinfo().skillgrid(PVPFieldObj.transform.Find(group + "/State/Grid"), friendship, skilldatas);
+
+        PVPFieldObj.transform.Find(group + "/State/Power/Value").GetComponent<UILabel>().text = ProcessButton.instance.GetOverNumString(damage, 0.0, "N0") + "(+" + ProcessButton.instance.GetOverNumString(MyTeam.addDamage, 0.0, "N0") + ")";
+    }
+
+    private void SettingMyInfo(bool bReady = false)
+    {
+        if (!bReady)
+            MyTeam.SetNextTurn();
+
+        var obj = MyTeam.GetMyTurn();
+        int id = obj.ID;
+        int Index = obj.UniqueID;
+        int level = obj.Level;
+        Int64 damage = obj.damage;
+        string skilldatas = obj.skilldatas;
+        int friendship = obj.skillfriendship;
+
+        if (id > 0)
+            settingbase(id, Index, level, damage, "PC", friendship, skilldatas);
+        else
+            SettingMyInfo();
+    }
+
+    private int GetAddStatUp(int ID, int Index)
+    {
+        string group = GameDataManager.someTemplate[ID, (int)GameDataManager.someTemplate_.group];
+        string grade = GameDataManager.someTemplate[ID, (int)GameDataManager.someTemplate_.grade];
+
+        int addstatup = GameManager.instance.GetPlayerinfo().GetAddStatUp(group, grade, ID, Index);
+
+        return addstatup;
+    }
+
+    private int GetCritical(bool isMe)
+    {
+        string skilldatas = MyTeam.GetMyTurn().skilldatas;
+        playerinfo.Cteambuff myteambuff = MyTeam.teambuff;
+        string itemPassive = MyTeam.itemPassive;
+        string illustration = MyTeam.illustration;
+
+        int critical_rate = GameManager.instance.GetPlayerinfo().GetTotalUseSkilldatasValue(skilldatas, playerinfo.skillconditiontype.critical_rate);
+        critical_rate += GameManager.instance.GetPlayerinfo().GetItemPassive(itemPassive, playerinfo.skillconditiontype.critical_rate);
+        critical_rate += GameManager.instance.GetPlayerinfo().getillustrationvalue(illustration,playerinfo.skillconditiontype.critical_rate);
+        int finishattackspawnrate = GameManager.instance.GetPlayerinfo().GetTotalUseSkilldatasValue(skilldatas, playerinfo.skillconditiontype.finishattackspawnrate);
+        finishattackspawnrate += GameManager.instance.GetPlayerinfo().GetItemPassive(itemPassive, playerinfo.skillconditiontype.finishattackspawnrate);
+        finishattackspawnrate += GameManager.instance.GetPlayerinfo().getillustrationvalue(illustration, playerinfo.skillconditiontype.finishattackspawnrate);
+
+        int crirate = 2000 + (int)(critical_rate) + myteambuff.crirate;
+        if (isMe == false)
+        {
+            crirate = 2500;
+        }
+
+        int addfinishattack = (int)(finishattackspawnrate);
+        if (isMe == false)
+            addfinishattack = 0;
+
+        bool ablefinish = finishattackspawnrate > 0;
+        if (isMe == false)
+            ablefinish = false;
+
+        int ran = random.Next(0, 10000);
+        if (ran < crirate)
+        {
+            if (ablefinish && ran < 100 + addfinishattack)
+            {
+                return 2;
+            }
+            return 1;
+        }
+
+        return 0;
+    }
+
+    private void SetBattleField()
+    {
+        MyTeam.SetNextTurn();
+        StartCoroutine(pcHitReady(0f, true));
+
+        GameManager.instance.EnableBackKey = true;
+        string monsterid = GameDataManager.guilddungeon[currentDungeonIndex, (int)GameDataManager.guilddungeon_.monsterid];
+        string monstername = GameDataManager.guilddungeon[currentDungeonIndex, (int)GameDataManager.guilddungeon_.monstername];
+
+        Texture texture = ResourceLoader.Load_Monster("mop_0" + monsterid) as Texture;
+        Texture backTexture = ResourceLoader.Load_Texture("Image/back") as Texture;
+
+        PVPFieldObj.transform.Find("Enemy//Back/Pc").gameObject.SetActive(true);
+        PVPFieldObj.transform.Find("Enemy//Back/Pc").GetComponent<UITexture>().mainTexture = texture;
+
+        PVPFieldObj.transform.Find("Enemy/State/Name").GetComponent<UILabel>().text = monstername;
+        PVPFieldObj.transform.Find("Enemy/State/Counter").gameObject.SetActive(false);
+
+        PVPFieldObj.transform.Find("PcBack").GetComponent<UITexture>().mainTexture = backTexture;
+        PVPFieldObj.transform.Find("PcBack").GetComponent<UITexture>().color = Util.GetPVEBackColor();
+        PVPFieldObj.transform.Find("PcBack").transform.localPosition = new Vector3(8f, -350f, 0f);
+
+        PVPFieldObj.transform.Find("Enemy/EnemyBack").GetComponent<UITexture>().mainTexture = backTexture;
+        PVPFieldObj.transform.Find("Enemy/EnemyBack").GetComponent<UITexture>().color = Util.GetPVEBackColor();
+        PVPFieldObj.transform.Find("Enemy/EnemyBack/PlaceName").gameObject.SetActive(false);
+        PVPFieldObj.transform.Find("Enemy/EnemyBack").transform.localPosition = new Vector3(18f, -105f, 0f);
+        
+        PVPFieldObj.transform.Find("PC/ButtonAttack").gameObject.SetActive(!MyTeam.IsEndTurn());
+        PVPFieldObj.transform.Find("PC/ButtonAttack").GetComponent<UIButton>().onClick.Add(new EventDelegate(OnClickAttack));
+
+        PVPFieldObj.transform.Find("PC/ButtonExit").gameObject.SetActive(true);
+        PVPFieldObj.transform.Find("PC/ButtonExit").GetComponent<UIButton>().onClick.Add(new EventDelegate(OnClickExit));
+
+        PVPFieldObj.transform.Find("PC/ButtonAuto").gameObject.SetActive(true);
+        PVPFieldObj.transform.Find("PC/ButtonAuto").GetComponent<UIButton>().onClick.Add(new EventDelegate(OnClickAuto));
+
+        PVPFieldObj.transform.Find("PC/ButtonOneKill").gameObject.SetActive(true);
+        PVPFieldObj.transform.Find("PC/ButtonOneKill").GetComponent<UIButton>().onClick.Add(new EventDelegate(OnClickAOnKill));
+
+        string[] Datas = GameManager.instance.GetPlayerinfo().Data_string[(int)playerinfo.ST_characterdata_string.GuildDungeonData].Split('#');
+        string attacks = Datas[1];
+        string[] divideData = attacks.Split('*');
+
+        int attackCount = 0;
+
+        for (int count = 0; count < divideData.Length; ++count)
+        {
+            if (string.IsNullOrEmpty(divideData[count]))
+                continue;
+
+            attackCount++;
+        }
+
+        PVPFieldObj.transform.Find("PC/AttackCount").GetComponent<UILabel>().text = string.Format(TextManager.Instance.GetString("BTF_TEXT_0001"), attackCount, 30);
+
+        Updatehp();
+    }
+
+    public Dictionary<int, string> attackDict = new Dictionary<int, string>();
+    public List<string> attackList = new List<string>();
+    int isEndActionFlag = 0;
+    int totalAttackPre = 0;
+    bool isOneKilling = false;
+    int OnKillCount = 0;
+    bool sendOneKillPacket = false;
+    public void OnClickAOnKill()
+    {
+        if (isOneKilling || bAutoPlay || isPlayAttack)
+        {
+            return;
+        }
+
+        SoundManager.Instance.Play(SoundType.Button12);
+
+        int vipGrade = (int)GameManager.instance.GetPlayerinfo().Data_int[(int)playerinfo.ST_characterdata_int.vipTotalcrystallastgrade];
+        int Level = (int)GameManager.instance.GetPlayerinfo().Data_int[(int)playerinfo.ST_characterdata_int.lv];
+
+        OnKillCount++;
+        if (OnKillCount > 1) return;
+
+        PVPFieldObj.transform.Find("PC/ButtonAttack").gameObject.SetActive(false);
+
+        string[] Datas = GameManager.instance.GetPlayerinfo().Data_string[(int)playerinfo.ST_characterdata_string.GuildDungeonData].Split('#');
+        string attacks = Datas[1];
+        string[] divideData = attacks.Split('*');
+        int attackCount = 0;
+        attackList.Clear();
+        for (int count = 0; count < divideData.Length; ++count)
+        {
+            if (string.IsNullOrEmpty(divideData[count]) || divideData[count] == "")
+                continue;
+
+            attackList.Add(divideData[count]);
+            attackCount++;
+        }
+        totalAttackPre = attackCount;
+
+        if (attackCount >= 30)
+        {
+            OnKillCount = 0;
+            return;
+        }
+
+        if (MyTeam.IsEndTurn())
+        {
+            OnKillCount = 0;
+            return;
+        }
+
+        int max = MyTeam.Objects.Count;
+
+        int tempIndex = MyTeam.TurnIdex;
+
+        attackDict.Clear();
+
+        isEndActionFlag = MyTeam.TurnIdex;
+
+        sendOneKillPacket = false;
+
+        Debug.Log(MyTeam.TurnIdex + "/" + max);
+
+        if (isOneKilling || bAutoPlay || isPlayAttack)
+        {
+            OnKillCount = 0;
+            return;
+        }
+
+        GameManager.instance.EnableBackKey = false;
+
+        List<string> willAttackList = new List<string>();
+        for (int i = MyTeam.TurnIdex; i < max; i++)
+        {
+            if (attackList.Contains(MyTeam.Objects[i].UniqueID.ToString())) continue;
+            int ID = MyTeam.Objects[i].ID;
+
+            willAttackList.Add(i.ToString());
+
+            if (attackCount + willAttackList.Count > 30) break;
+
+        }
+        int origionIndex = MyTeam.TurnIdex;
+        string sendData = "";
+        allattackDict.Clear();
+        foreach (string temp in willAttackList)
+        {
+            int index = int.Parse(temp);
+            MyTeam.TurnIdex = index;
+
+            int cri = GetCritical(true);
+            if (cri > 0)
+            {
+                if (cri == 2)
+                {
+                    MyTeam.teamCriCount = 1000;
+                }
+                else
+                    MyTeam.teamCriCount++;
+            }
+            else
+                MyTeam.teamCriCount = 0;
+
+            int cricount = MyTeam.teamCriCount;
+
+            int chainAttack = 0;
+            int brokenShield = 0;
+            Int64 reflectdamage = 0;
+            Int64 outpoisondamage = 0;
+            Int64 outbombdamage = 0;
+
+            Int64 damagetext = pchitenemy(cricount, out chainAttack, out brokenShield, out reflectdamage, out outpoisondamage, out outbombdamage);
+
+            string DictParam = cricount + "," + chainAttack + "," + brokenShield + "," + reflectdamage + "," + outpoisondamage + "," + outbombdamage + "," + damagetext;
+            if (!allattackDict.ContainsKey(MyTeam.GetMyTurn().UniqueID.ToString()))
+            {
+                allattackDict.Add(MyTeam.GetMyTurn().UniqueID.ToString(), DictParam);
+                sendData += MyTeam.GetMyTurn().UniqueID + "*" + damagetext + "*" + cricount + "#";
+            }
+
+        }
+
+        MyTeam.TurnIdex = origionIndex;
+        if (sendData != "")
+        {
+            ProcessButton.instance.sendtotalpacket3(Totalpacket_type.GuildDungeonAttackOneKill, currentDungeonIndex.ToString(), sendData, "");
+
+        }
+        else
+        {
+            OnekillResult();
+        }
+    }
+    Dictionary<string, string> allattackDict = new Dictionary<string, string>();
+    IEnumerator pcHitEnemyOneKill(float time, string Index)
+    {
+        if (!allattackDict.ContainsKey(Index)) yield break;
+        if(!PVPFieldObj) yield break;
+        PVPFieldObj.transform.Find("Enemy/Skill").gameObject.SetActive(true);
+        PVPFieldObj.transform.Find("Enemy/Skill/DamageRed").gameObject.SetActive(false);
+        PVPFieldObj.transform.Find("Enemy/Skill/DamageRed2").gameObject.SetActive(false);
+        PVPFieldObj.transform.Find("Enemy/Skill/Damage").gameObject.SetActive(false);
+        PVPFieldObj.transform.Find("Enemy/Skill/Hemorrhage").gameObject.SetActive(false);
+        PVPFieldObj.transform.Find("Enemy/Skill/1").gameObject.SetActive(false);
+
+        yield return new WaitForSeconds(time);
+        if (!PVPFieldObj) yield break;
+        Debug.Log(isEndActionFlag);
+        string[] damageData = allattackDict[Index].Split(',');
+
+        int cricount = int.Parse(damageData[0]);
+        int chainAttack = int.Parse(damageData[1]);
+        int brokenShield = int.Parse(damageData[2]);
+        Int64 reflectdamage = Int64.Parse(damageData[3]);
+        Int64 outpoisondamage = Int64.Parse(damageData[4]);
+        Int64 outbombdamage = Int64.Parse(damageData[5]);
+        Int64 damagetext = Int64.Parse(damageData[6]);
+        isOnDamage = true;
+
+        GameObject Damage = ProcessButton.instance.GetPrefabsBase("PvpContents/DamageAll", PVPFieldObj.transform.Find("Enemy/"), false);
+        Damage.transform.localRotation = new Quaternion(0, 0, 0, 0);
+        Damage.SetActive(true);
+        if (cricount > 0)
+        {
+            string damagetextString = ProcessButton.instance.GetOverNumString(damagetext, 0.0, "N0");
+            Damage.transform.Find("Damage2").GetComponent<UILabel>().text = "-" + damagetextString;
+            Damage.transform.Find("Damage2").GetComponent<TweenPosition>().PlayForward();
+            Damage.transform.Find("Damage2").GetComponent<TweenPosition>().ResetToBeginning();
+            Damage.transform.Find("Damage2").GetComponent<TweenAlpha>().PlayForward();
+            Damage.transform.Find("Damage2").GetComponent<TweenAlpha>().ResetToBeginning();
+
+            if (cricount > 1)
+            {
+                StartCoroutine(delaycriticaldamage(0.5f, Damage.transform.Find("Damage3").gameObject, damagetext));
+            }
+        }
+        else
+        {
+            string damagetextString = ProcessButton.instance.GetOverNumString(damagetext, 0.0, "N0");
+            Damage.transform.Find("Damage").GetComponent<UILabel>().text = "-" + damagetextString;
+            Damage.transform.Find("Damage").GetComponent<TweenPosition>().PlayForward();
+            Damage.transform.Find("Damage").GetComponent<TweenPosition>().ResetToBeginning();
+            Damage.transform.Find("Damage").GetComponent<TweenAlpha>().PlayForward();
+            Damage.transform.Find("Damage").GetComponent<TweenAlpha>().ResetToBeginning();
+        }
+
+        if (outpoisondamage > 0)
+        {
+            PVPFieldObj.transform.Find("Enemy/Skill/DamageGreen").gameObject.SetActive(false);
+            PVPFieldObj.transform.Find("Enemy/Skill/DamageGreen").gameObject.SetActive(true);
+
+            PVPFieldObj.transform.Find("Enemy/Skill/DamageGreen").GetComponent<UILabel>().text = "-" + ProcessButton.instance.GetOverNumString(outpoisondamage, 0.0, "N0");
+        }
+        if (outbombdamage > 0)
+        {
+            PVPFieldObj.transform.Find("Enemy/Skill/DamageRed").gameObject.SetActive(false);
+            PVPFieldObj.transform.Find("Enemy/Skill/DamageRed").gameObject.SetActive(true);
+            PVPFieldObj.transform.Find("Enemy/Skill/DamageRed").GetComponent<UILabel>().text = "-" + ProcessButton.instance.GetOverNumString(outbombdamage, 0.0, "N0");
+        }
+
+        PVPFieldObj.transform.Find("Enemy/").GetComponent<TweenPosition>().PlayForward();
+        PVPFieldObj.transform.Find("Enemy/").GetComponent<TweenPosition>().ResetToBeginning();
+
+        PVPFieldObj.transform.Find("Enemy//Back/Pc").GetComponent<TweenColor>().from = Util.SetupSilhouette();
+        PVPFieldObj.transform.Find("Enemy//Back/Pc").GetComponent<TweenColor>().to = Util.SetupSilhouette(true);
+        PVPFieldObj.transform.Find("Enemy//Back/Pc").GetComponent<TweenColor>().PlayForward();
+        PVPFieldObj.transform.Find("Enemy//Back/Pc").GetComponent<TweenColor>().ResetToBeginning();
+
+
+        if (cricount > 0)
+        {
+            if (cricount > 1)
+            {
+                PVPFieldObj.transform.Find("Enemy//P_Attack01_S_Cri1").gameObject.SetActive(false);
+                PVPFieldObj.transform.Find("Enemy//P_Attack01_S_Cri1").gameObject.SetActive(true);
+
+                StartCoroutine(delaycriticaleffect(0.5f, PVPFieldObj.transform.Find("Enemy//P_Attack01_S_Cri2").gameObject, false));
+                StartCoroutine(delaycriticaleffect(0.5f, PVPFieldObj.transform.Find("Enemy//P_Attack01_S_Cri2").gameObject, true));
+            }
+            else
+            {
+                PVPFieldObj.transform.Find("Enemy//P_Attack01_S_Cri1").gameObject.SetActive(false);
+                PVPFieldObj.transform.Find("Enemy//P_Attack01_S_Cri1").gameObject.SetActive(true);
+            }
+        }
+        else
+        {
+            PVPFieldObj.transform.Find("Enemy//P_Attack01").gameObject.SetActive(false);
+            PVPFieldObj.transform.Find("Enemy//P_Attack01").gameObject.SetActive(true);
+        }
+
+        SoundManager.Instance.Play(SoundType.SE_PVEMonster);
+        SoundManager.Instance.Play(SoundType.SE_HitSound);
+
+        PVPFieldObj.transform.Find("PcBack").GetComponent<UITexture>().color = Util.GetPVPCriticalBackColor(false);
+        PVPFieldObj.transform.Find("Enemy/EnemyBack").GetComponent<UITexture>().color = Util.GetPVPCriticalBackColor(false);
+        PVPFieldObj.transform.Find("PC//AttackEffect").gameObject.SetActive(false);
+    }
+
+    public void OnSuccessAttackOneKill(string type, string data)
+    {
+        float nexttime = 0.0f;
+        if (data != "")
+        {
+            string[] datas = data.Split('#');
+
+            nexttime = 1.3f;
+            bool Attack = true;
+            foreach (string Index in datas)
+            {
+                if (!PVPFieldObj) break;
+                if (string.IsNullOrEmpty(Index) || Index == "") continue;
+                if (!allattackDict.ContainsKey(Index)) continue;
+
+                if (Attack)
+                {
+                    isOneKilling = true;
+                    Attack = false;
+                    float ScaleDelayTime = 0.5f;
+                    float PositionDelayTime = 1.0f;
+                    playerinfo player = GameManager.instance.GetPlayerinfo();
+                    string skilldatas = MyTeam.GetMyTurn().skilldatas;
+                    string itemPassive = MyTeam.itemPassive;
+                    string illustration = MyTeam.illustration;
+                    int chainattack_2 = 0;
+                    player.GetTotalUseSkilldatasValue_ChainAttack(skilldatas, ref chainattack_2, playerinfo.skillconditiontype.chainattack_2);
+                    player.GetTotalUseSkilldatasValue_ChainAttack(itemPassive, ref chainattack_2, playerinfo.skillconditiontype.chainattack_2);
+
+                    player.GetTotalUseSkilldatasValue_ChainAttack(skilldatas, ref chainattack_2, playerinfo.skillconditiontype.chainattack_2_once);
+                    player.GetTotalUseSkilldatasValue_ChainAttack(itemPassive, ref chainattack_2, playerinfo.skillconditiontype.chainattack_2_once);
+                    string[] damageData = allattackDict[Index].Split(',');
+
+                    int cricount = int.Parse(damageData[0]);
+
+                    if (cricount > 0)
+                    {
+                        PVPFieldObj.transform.Find("PcBack").GetComponent<UITexture>().color = Util.GetPVPCriticalBackColor(true);
+                        PVPFieldObj.transform.Find("Enemy/EnemyBack").GetComponent<UITexture>().color = Util.GetPVPCriticalBackColor(true);
+
+                        PVPFieldObj.transform.Find("PC//AttackEffect").gameObject.SetActive(true);
+
+                        PVPFieldObj.transform.Find("PC/critical").gameObject.SetActive(false);
+                        PVPFieldObj.transform.Find("PC/critical").gameObject.SetActive(true);
+
+                        PVPFieldObj.transform.Find("PC/critical").GetComponent<UILabel>().text = string.Format(TextManager.Instance.GetString("BTF_TEXT_ALLATTACKDIMENTIONCRACK"));
+
+                        PVPFieldObj.transform.Find("PC/critical").GetComponent<TweenAlpha>().PlayForward();
+                        PVPFieldObj.transform.Find("PC/critical").GetComponent<TweenAlpha>().ResetToBeginning();
+
+                        PVPFieldObj.transform.Find("PC/critical").GetComponent<TweenScale>().PlayForward();
+                        PVPFieldObj.transform.Find("PC/critical").GetComponent<TweenScale>().ResetToBeginning();
+                    }
+                    else
+                    {
+                        PVPFieldObj.transform.Find("PC/critical").gameObject.SetActive(false);
+                        PVPFieldObj.transform.Find("PC/critical").gameObject.SetActive(true);
+
+                        PVPFieldObj.transform.Find("PC/critical").GetComponent<UILabel>().text = string.Format(TextManager.Instance.GetString("BTF_TEXT_ALLATTACKDIMENTIONCRACK"));
+
+                        PVPFieldObj.transform.Find("PC/critical").GetComponent<TweenAlpha>().PlayForward();
+                        PVPFieldObj.transform.Find("PC/critical").GetComponent<TweenAlpha>().ResetToBeginning();
+
+                        PVPFieldObj.transform.Find("PC/critical").GetComponent<TweenScale>().PlayForward();
+                        PVPFieldObj.transform.Find("PC/critical").GetComponent<TweenScale>().ResetToBeginning();
+
+                        nexttime += 1f;
+                        ScaleDelayTime += 1f;
+                        PositionDelayTime += 1f;
+                    }
+
+                    int chainAttackCount = 0;
+                    chainAttackCount = MyTeam.GetMyTurn().Buff.chainAttack_2_count;
+                    if (chainattack_2 > 0 && (chainAttackCount == -1 || chainAttackCount > 0))
+                    {
+                        PVPFieldObj.transform.Find("PC/DoubleHit").gameObject.SetActive(false);
+                        PVPFieldObj.transform.Find("PC/DoubleHit").gameObject.SetActive(true);
+
+                        PVPFieldObj.transform.Find("PC/DoubleHit").GetComponent<TweenAlpha>().PlayForward();
+                        PVPFieldObj.transform.Find("PC/DoubleHit").GetComponent<TweenAlpha>().ResetToBeginning();
+
+                        PVPFieldObj.transform.Find("PC/DoubleHit").GetComponent<TweenScale>().PlayForward();
+                        PVPFieldObj.transform.Find("PC/DoubleHit").GetComponent<TweenScale>().ResetToBeginning();
+                    }
+
+                    SoundManager.Instance.Play(SoundType.Voice_OnAttack);
+
+                    PVPFieldObj.transform.Find("PC//Back/Pc").GetComponent<TweenScale>().delay = ScaleDelayTime;
+                    PVPFieldObj.transform.Find("PC//Back/Pc").GetComponent<TweenScale>().duration = 1.2f;
+                    PVPFieldObj.transform.Find("PC//Back/Pc").GetComponent<TweenScale>().PlayForward();
+                    PVPFieldObj.transform.Find("PC//Back/Pc").GetComponent<TweenScale>().ResetToBeginning();
+
+                    PVPFieldObj.transform.Find("PC//Back/Pc").GetComponent<TweenPosition>().delay = PositionDelayTime;
+                    PVPFieldObj.transform.Find("PC//Back/Pc").GetComponent<TweenPosition>().PlayForward();
+                    PVPFieldObj.transform.Find("PC//Back/Pc").GetComponent<TweenPosition>().ResetToBeginning();
+                }
+                else
+                    nexttime += 0.22f;
+
+                StartCoroutine(pcHitEnemyOneKill(nexttime, Index));
+            }
+        }
+        StartCoroutine(OnekillResult_Coroutine(nexttime, type));
+    }
+
+    public void OnekillResult()
+    {
+
+        GameManager.instance.EnableBackKey = true;
+        BackKeyManager.SetBackKeyAction(PVPFieldObj.transform.Find("PC/ButtonExit").GetComponent<UIButton>());
+        isOneKilling = false;
+        OnKillCount = 0;
+        string[] Datas = GameManager.instance.GetPlayerinfo().Data_string[(int)playerinfo.ST_characterdata_string.GuildDungeonData].Split('#');
+        string attacks = Datas[1];
+        string[] divideData = attacks.Split('*');
+        int attackCount = 0;
+        for (int count = 0; count < divideData.Length; ++count)
+        {
+            if (string.IsNullOrEmpty(divideData[count]) || divideData[count] == "")
+                continue;
+            attackCount++;
+        }
+        if (attackCount < 30 && MyTeam.Objects.Count - 1 >= attackCount)
+        {
+            PVPFieldObj.transform.Find("PC/ButtonAttack").gameObject.SetActive(true);
+        }
+    }
+
+    IEnumerator OnekillResult_Coroutine(float time, string type)
+    {
+        yield return new WaitForSeconds(time);
+
+        GameManager.instance.EnableBackKey = true;
+        BackKeyManager.SetBackKeyAction(PVPFieldObj.transform.Find("PC/ButtonExit").GetComponent<UIButton>());
+        isOneKilling = false;
+        OnKillCount = 0;
+        string[] Datas = GameManager.instance.GetPlayerinfo().Data_string[(int)playerinfo.ST_characterdata_string.GuildDungeonData].Split('#');
+        string attacks = Datas[1];
+        string[] divideData = attacks.Split('*');
+        int attackCount = 0;
+        for (int count = 0; count < divideData.Length; ++count)
+        {
+            if (string.IsNullOrEmpty(divideData[count]) || divideData[count] =="")
+                continue;
+            attackCount++;
+        }
+        if (attackCount < 30 && MyTeam.Objects.Count - 1 >= attackCount)
+        {
+            PVPFieldObj.transform.Find("PC/ButtonAttack").gameObject.SetActive(true);
+        }
+
+        if (isGetWindowLater)
+        {
+            isGetWindowLater = false;
+            if (rewardType_Later > 0 && rewardValue_Later > 0)
+                ShowRewardPopup(rewardType_Later, rewardValue_Later);
+            rewardType_Later = 0;
+            rewardValue_Later = 0;
+        }
+
+        switch (type)
+        {
+            case "0":       // 안죽었다.
+                {
+
+                }
+                break;
+            case "1":       // 딴 놈이 죽였다.
+                {
+                    isMonsterDead = true;
+                }
+                break;
+            case "2":       // 막타 먹었다.
+                {
+                    isMonsterDead = true;
+                }
+                break;
+            case "3":
+                {
+                    // 공격 횟수 모두 사용
+                }
+                break;
+        }
+    }
+
+    public void OnClickAttack()
+    {
+        if (isPlayAttack)
+            return;
+
+        isPlayAttack = true;
+        PVPFieldObj.transform.Find("PC/ButtonAttack").gameObject.SetActive(false);
+        ExcuteAttack();
+    }
+
+    public void OnClickExit()
+    {
+        isPlayAttack = false;
+        isOnDamage = false;
+        bAutoPlay = false;
+        isAutoAttacking = false;
+        if (isOneKilling) return;
+        if (isGetWindowLater) return;
+        Destroy(PVPFieldObj);
+
+        if (parentObj)
+            parentObj.gameObject.SetActive(true);
+
+        BackKeyManager.SetBackKeyAction(ProcessButton.instance.guilddungeonobj.transform.Find("MainNameTab/Close").GetComponent<UIButton>());
+        ProcessButton.instance.AddOnClickEvent(PVPFieldObj.transform.Find("Result2/ToLobby").GetComponent<UIButton>(), "endguilddungeon", "1", typeof(string));
+    }
+
+    public void OnClickChange(int index)
+    {
+        if (isPlayAttack)
+            return;
+
+        if (index == MyTeam.lastAttackIndex)
+            return;
+
+        if (isMonsterDead)
+            return;
+
+        SoundManager.Instance.Play(SoundType.Button12);
+
+        if (MyTeam.GetObject(index).isAttackAble())
+        {
+            MyTeam.lastAttackIndex = index;
+            MyTeam.TurnIdex = index;
+            PVPFieldObj.transform.Find("PC//Back").GetComponent<TweenPosition>().PlayForward();
+            StartCoroutine(pcHitReady(0.5f, false));
+        }
+        else
+        {
+        }
+    }
+
+    public bool IsEndTurn()
+    {
+        if (MyTeam == null)
+        {
+            MyTeam = new Team();
+            
+            playerinfo player = GameManager.instance.GetPlayerinfo();
+            player.groupstatup.calculatedata();
+            player.SkillEffectUp.calculatedata();
+            player.initPicnicSkillEffect();
+
+            int addHPStat_skill = 0;
+            Dictionary<Int64, int> sortdic = new Dictionary<Int64, int>();
+            foreach (KeyValuePair<int, string[]> items in player.inventory_memory)
+            {
+                string[] values = items.Value;
+                int id = int.Parse(values[(int)playerinfo.ST_Inventory_memory.id]);
+                int index = int.Parse(values[(int)playerinfo.ST_Inventory_memory.index]);
+                int level = int.Parse(values[(int)playerinfo.ST_Inventory_memory.level]);
+                int skillfriendship = int.Parse(values[(int)playerinfo.ST_Inventory_memory.skillfriendship]);
+                string skilldatas = values[(int)playerinfo.ST_Inventory_memory.skilldatas];
+                int mythStatup = int.Parse(values[(int)playerinfo.ST_Inventory_memory.mythStatup]);
+
+                if (id <= 0) continue;
+
+                string grade = GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.grade];
+                string rich = GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.rich];
+                string manner = GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.manner];
+                string power = GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.power];
+                string group = GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.group];
+                int type = int.Parse(GameDataManager.someTemplate[id, (int)GameDataManager.someTemplate_.type]);
+
+                int addStatUp = GetAddStatUp(id, index);
+                int multiTotalStatUp = player.SkillEffectUp.GetAddSkillEffect(id);
+                multiTotalStatUp += player.SkillEffectUp.GetAddSkillEffectGroup(id);                
+                addHPStat_skill += player.GetTotalUseSkilldatasValue(skilldatas, playerinfo.skillconditiontype.maxHP_add);
+
+                string fooddatas = values[(int)playerinfo.ST_Inventory_memory.fooddatas];
+                int addedRich = player.getAddedStatByFoodItem(fooddatas, playerinfo.StatType.Rich);
+                int addedSense = player.getAddedStatByFoodItem(fooddatas, playerinfo.StatType.Sense);
+                int addedpower = player.getAddedStatByFoodItem(fooddatas, playerinfo.StatType.power);
+                
+                int addPicnicSkillUp = player.getPicnicSkillEffect(id.ToString(), group);
+                string illustration = player.Getillustration(id);
+                Dictionary<string, int> ItemSetDict = new Dictionary<string, int>();
+                playerinfo.getItemSetDictionary(ref ItemSetDict);
+                int SetOptionRate = playerinfo.getItemSetStatRate(group, ItemSetDict);
+                
+                if (type == 1)
+                    power = (int.Parse(power) + mythStatup).ToString();
+                else if (type == 2)
+                    rich = (int.Parse(rich) + mythStatup).ToString();
+                else if (type == 3)
+                    manner = (int.Parse(manner) + mythStatup).ToString();
+                else
+                {
+                    power = (int.Parse(power) + mythStatup).ToString();
+                    rich = (int.Parse(rich) + mythStatup).ToString();
+                    manner = (int.Parse(manner) + mythStatup).ToString();
+                }
+
+                double richRate = 0f;
+                double mannerRate = 0f;
+                double powerRate = 0f;
+                skilldatas = playerinfo.AddonAccessorySkillDatas(index, skilldatas);
+                player.GetEmblemEffectSkillDatas(ref skilldatas);
+                player.GetPrivateItemAddSetSkillEffectValue(MyTeam.PrivateItemInfo, id, ref skilldatas);
+                int RuneSkillIndex = (int)player.Data_int[(int)playerinfo.ST_characterdata_int.RuneSkillIndex];
+                player.GetRuneSkillEffectValue(RuneSkillIndex, ref skilldatas);
+                playerinfo.GetSkillStatUpRate(skilldatas, out richRate, out mannerRate, out powerRate);
+
+                Int64 sumpoint = 0;
+                sumpoint += (Int64)(Util.GetmultiplebyLevel_base(Int64.Parse(rich), level, int.Parse(grade), skillfriendship, skilldatas, addStatUp, addedRich, addPicnicSkillUp, multiTotalStatUp, illustration, SetOptionRate, (int)(richRate * 100)));
+                sumpoint += (Int64)(Util.GetmultiplebyLevel_base(Int64.Parse(manner), level, int.Parse(grade), skillfriendship, skilldatas, addStatUp, addedSense, addPicnicSkillUp, multiTotalStatUp, illustration, SetOptionRate, (int)(mannerRate * 100)));
+                sumpoint += (Int64)(Util.GetmultiplebyLevel_base(Int64.Parse(power), level, int.Parse(grade), skillfriendship, skilldatas, addStatUp, addedpower, addPicnicSkillUp, multiTotalStatUp, illustration, SetOptionRate, (int)(powerRate * 100)));
+
+                foreach (KeyValuePair<Int64, int> data in sortdic)
+                {
+                    if (data.Key == sumpoint)
+                    {
+                        sumpoint++;
+                    }
+                }
+
+                if(sortdic.ContainsKey(sumpoint) == false)
+                    sortdic.Add(sumpoint, index);
+            }
+            List<KeyValuePair<Int64, int>> sortList = sortdic.ToList();
+            sortList.Sort(delegate (KeyValuePair<Int64, int> pair1, KeyValuePair<Int64, int> pair2)
+            {
+                return pair1.Key.CompareTo(pair2.Key);
+            });
+            sortList.Reverse();
+
+            List<KeyValuePair<Int64, int>> List = sortList;
+
+            int SkillLimitCount = int.Parse(GameDataManager.systemdataTemplate[(int)GameDataManager.systemdataid.SkillLimitCount, (int)GameDataManager.systemdataTemplate_.value1]);
+            Dictionary<int, int> limit = new Dictionary<int, int>();
+            List<KeyValuePair<Int64, int>> DelList = new List<KeyValuePair<long, int>>();
+            foreach (var  in List)
+            {
+                string[] values = player.inventory_memory[.Value];
+                int id = int.Parse(values[(int)playerinfo.ST_Inventory_memory.id]);
+                string skilldatas = values[(int)playerinfo.ST_Inventory_memory.skilldatas];
+
+                if (player.IsSkilldatasInConditionType(skilldatas, playerinfo.skillconditiontype.teambuff_richrate))
+                {
+                    if (!limit.ContainsKey(id))
+                        limit.Add(id, 1);
+                    else if (limit.ContainsKey(id) && limit[id] < SkillLimitCount)
+                        ++limit[id];
+                    else
+                        DelList.Add();
+                }
+                if (player.IsSkilldatasInConditionType(skilldatas, playerinfo.skillconditiontype.teambuff_mannerrate))
+                {
+                    if (!limit.ContainsKey(id))
+                        limit.Add(id, 1);
+                    else if (limit.ContainsKey(id) && limit[id] < SkillLimitCount)
+                        ++limit[id];
+                    else
+                        DelList.Add();
+                }
+                if (player.IsSkilldatasInConditionType(skilldatas, playerinfo.skillconditiontype.teambuff_powerrate))
+                {
+                    if (!limit.ContainsKey(id))
+                        limit.Add(id, 1);
+                    else if (limit.ContainsKey(id) && limit[id] < SkillLimitCount)
+                        ++limit[id];
+                    else
+                        DelList.Add();
+                }
+            }
+
+            foreach (var delItem in DelList)
+            {
+                List.Remove(delItem);
+            }
+
+            MyTeam.SetData(List);
+            MyTeam.PrivateItemInfo = player.Data_string[(int)playerinfo.ST_characterdata_string.PrivateItemInfo];
+        }
+
+        return MyTeam.IsEndTurn();
+    }
+
+    public void OnClickAuto()
+    {
+        int vipGrade = (int)GameManager.instance.GetPlayerinfo().Data_int[(int)playerinfo.ST_characterdata_int.vipTotalcrystallastgrade];
+
+        if (MyTeam.IsEndTurn())
+            return;
+        bAutoPlay = !bAutoPlay;
+        PVPFieldObj.transform.Find("PC/ButtonAuto/Label").GetComponent<UILabel>().text = bAutoPlay ? TextManager.Instance.GetString("BTF_TEXT_0002") : TextManager.Instance.GetString("BTF_TEXT_0003");
+    }
+
+    private void ExcuteAttack()
+    {
+        int cri = GetCritical(true);
+        if (cri > 0)
+        {
+            if (cri == 2)
+            {
+                MyTeam.teamCriCount = 1000; //필살기.
+            }
+            else
+                MyTeam.teamCriCount++;
+        }
+        else
+            MyTeam.teamCriCount = 0;
+
+        StartCoroutine(pcHitStart(0f, MyTeam.teamCriCount));
+    }
+
+    public void OnSuccessAttack(string type)
+    {
+        switch (type)
+        {
+            case "0":       // 안죽었다.
+                {
+                        PVPFieldObj.transform.Find("PC//Back").GetComponent<TweenPosition>().PlayForward();
+                        StartCoroutine(pcHitReady(0.5f, false));
+                }
+                break;
+            case "1":       // 딴 놈이 죽였다.
+                {
+                    isMonsterDead = true;
+                }
+                break;
+            case "2":       // 막타 먹었다.
+                {
+                    SoundManager.Instance.Play(SoundType.SE_VictoryHunting);
+                    killMonster();
+                }
+                break;
+            case "3":
+                {
+                    // 공격 횟수 모두 사용
+                }
+                break;
+        }
+    }
+
+    public void OnFailAttack(string type)
+    {
+        if (type == "0")
+        {
+            //ProcessButton.instance.MessageBox(false, "", "실패", "네트워크 오류 발생");
+            ProcessButton.instance.MessageBox(false, "", TextManager.Instance.GetString("GM_FAIL"), TextManager.Instance.GetString("SVR_TEXT_0177"));
+            PVPFieldObj.transform.Find("PC/ButtonAttack").gameObject.SetActive(!MyTeam.IsEndTurn());
+            isPlayAttack = false;
+        }
+        else if (type == "1")
+        {
+        }
+    }
+
+    public void OnRefreshMonsterHP(string CurrentHP, string MaxHP)
+    {
+        if(monster.dungeonIndex == 9)
+        {
+            monster.CurHP = Int64.MaxValue;
+            monster.CurHP2 = Int64.MaxValue;
+            monster.MaxHP = Int64.MaxValue;
+            monster.BaseHP = Int64.MaxValue;
+        }
+        else
+        {
+            monster.CurHP = Int64.Parse(CurrentHP);
+            monster.CurHP2 = Int64.Parse(CurrentHP);
+            monster.MaxHP = Int64.Parse(MaxHP);
+            monster.BaseHP = Int64.Parse(MaxHP);
+        }
+
+        Updatehp();
+    }
+
+    IEnumerator pcHitReady(float time, bool isReady)
+    {
+        yield return new WaitForSeconds(time);
+
+        SettingMyInfo(isReady);
+        if (!bAutoPlay)
+        {
+            PVPFieldObj.transform.Find("PC/ButtonAttack").gameObject.SetActive(!MyTeam.IsEndTurn());
+        }
+        else
+        {
+            PVPFieldObj.transform.Find("PC/ButtonAttack").gameObject.SetActive(false);
+        }
+        if (monster.dungeonIndex == 9)
+            PVPFieldObj.transform.Find("PC/ButtonAttack").gameObject.SetActive(true);
+        isPlayAttack = false;
+        isAutoAttacking = false;
+    }
+
+    IEnumerator pcHitStart(float time, int cricount)
+    {
+        yield return new WaitForSeconds(time);
+
+        float nexttime = 1.3f;
+        float ScaleDelayTime = 0.5f;
+        float PositionDelayTime = 1f;
+
+        playerinfo player = GameManager.instance.GetPlayerinfo();
+        string skilldatas = MyTeam.GetMyTurn().skilldatas;
+        string itemPassive = MyTeam.itemPassive;
+        string illustration = MyTeam.illustration;
+        int chainattack_2 = 0;
+        player.GetTotalUseSkilldatasValue_ChainAttack(skilldatas, ref chainattack_2, playerinfo.skillconditiontype.chainattack_2);
+        player.GetTotalUseSkilldatasValue_ChainAttack(itemPassive, ref chainattack_2, playerinfo.skillconditiontype.chainattack_2);
+
+        player.GetTotalUseSkilldatasValue_ChainAttack(skilldatas, ref chainattack_2, playerinfo.skillconditiontype.chainattack_2_once);
+        player.GetTotalUseSkilldatasValue_ChainAttack(itemPassive, ref chainattack_2, playerinfo.skillconditiontype.chainattack_2_once);
+
+        if (cricount > 0)
+        {
+            PVPFieldObj.transform.Find("PcBack").GetComponent<UITexture>().color = Util.GetPVPCriticalBackColor(true);
+            PVPFieldObj.transform.Find("Enemy/EnemyBack").GetComponent<UITexture>().color = Util.GetPVPCriticalBackColor(true);
+
+            PVPFieldObj.transform.Find("PC//AttackEffect").gameObject.SetActive(true);
+            PVPFieldObj.transform.Find("PC/critical").gameObject.SetActive(false);
+            PVPFieldObj.transform.Find("PC/critical").gameObject.SetActive(true);
+
+            if (cricount == 1000)
+                PVPFieldObj.transform.Find("PC/critical").GetComponent<UILabel>().text = TextManager.Instance.GetString("BTF_TEXT_0035");
+            else
+                PVPFieldObj.transform.Find("PC/critical").GetComponent<UILabel>().text = cricount > 1 ? TextManager.Instance.GetString("BTF_TEXT_0004") : TextManager.Instance.GetString("BTF_TEXT_0005");
+            PVPFieldObj.transform.Find("PC/critical").GetComponent<TweenAlpha>().PlayForward();
+            PVPFieldObj.transform.Find("PC/critical").GetComponent<TweenAlpha>().ResetToBeginning();
+
+            PVPFieldObj.transform.Find("PC/critical").GetComponent<TweenScale>().PlayForward();
+            PVPFieldObj.transform.Find("PC/critical").GetComponent<TweenScale>().ResetToBeginning();
+
+            nexttime += 1f;
+            ScaleDelayTime += 1f;
+            PositionDelayTime += 1f;
+        }
+
+        int chainAttackCount = 0;
+        chainAttackCount = MyTeam.GetMyTurn().Buff.chainAttack_2_count;
+        if (chainattack_2 > 0 && (chainAttackCount == -1 || chainAttackCount > 0))
+        {
+            PVPFieldObj.transform.Find("PC/DoubleHit").gameObject.SetActive(false);
+            PVPFieldObj.transform.Find("PC/DoubleHit").gameObject.SetActive(true);
+
+            PVPFieldObj.transform.Find("PC/DoubleHit").GetComponent<TweenAlpha>().PlayForward();
+            PVPFieldObj.transform.Find("PC/DoubleHit").GetComponent<TweenAlpha>().ResetToBeginning();
+
+            PVPFieldObj.transform.Find("PC/DoubleHit").GetComponent<TweenScale>().PlayForward();
+            PVPFieldObj.transform.Find("PC/DoubleHit").GetComponent<TweenScale>().ResetToBeginning();
+        }
+
+        SoundManager.Instance.Play(SoundType.Voice_OnAttack);
+
+        PVPFieldObj.transform.Find("PC//Back/Pc").GetComponent<TweenScale>().delay = ScaleDelayTime;
+        PVPFieldObj.transform.Find("PC//Back/Pc").GetComponent<TweenScale>().duration = 1.2f;
+        PVPFieldObj.transform.Find("PC//Back/Pc").GetComponent<TweenScale>().PlayForward();
+        PVPFieldObj.transform.Find("PC//Back/Pc").GetComponent<TweenScale>().ResetToBeginning();
+
+
+        PVPFieldObj.transform.Find("PC//Back/Pc").GetComponent<TweenPosition>().delay = PositionDelayTime;
+        PVPFieldObj.transform.Find("PC//Back/Pc").GetComponent<TweenPosition>().PlayForward();
+        PVPFieldObj.transform.Find("PC//Back/Pc").GetComponent<TweenPosition>().ResetToBeginning();
+
+        yield return StartCoroutine(pcHitEnemy(nexttime, cricount));
+    }
+
+    private Int64 pchitenemy(int cricount, out int chainAttack, out int brokenShield, out Int64 reflectdamage, out Int64 outpoisondamage, out Int64 outbombdamage)
+    {
+        string skilldatas = MyTeam.GetMyTurn().skilldatas;
+        string itemPassive = MyTeam.itemPassive;
+        string illustration = MyTeam.illustration;
+       
+        Int64 hurthp = MyTeam.MaxHP - MyTeam.CurHP;
+
+        bool bestturn = false;
+        if (MyTeam.bestdamageturn == MyTeam.TurnIdex)
+            bestturn = true;
+
+        Int64 bossMaxHP = MyTeam.MaxHP + 1; // 보스는 나보다 항상 강한적
+        string group = GameDataManager.someTemplate[MyTeam.GetMyTurn().ID, (int)GameDataManager.someTemplate_.group];
+        Int64 damage = GameManager.instance.GetPlayerinfo().getdamage(MyTeam.GetMyTurn().damage, MyTeam.addDamage, cricount, skilldatas, "", ref MyTeam.GetMyTurn().Buff, ref monster.monsterBuff, MyTeam.teambuff, ref monster.teambuff, 
+            0, myattackcount++, false, hurthp, MyTeam.CurHP, monster.CurHP, MyTeam.BaseHP, monster.BaseHP, MyTeam.MaxHP, bossMaxHP, GameDataManager.BattleType.Guild, bestturn, 
+            out chainAttack, out brokenShield, out reflectdamage, out outpoisondamage, out outbombdamage, itemPassive, "", illustration, "", group, "", 0, 0, 0, MyTeam.GetMyTurn().ID);
+
+        //int poisondamage = GameManager.instance.GetPlayerinfo().getskilldatasvalue(skilldatas, playerinfo.skillconditiontype.poisondamage);
+        int poisondamage = GameManager.instance.GetPlayerinfo().GetTotalUseSkilldatasValue(skilldatas, playerinfo.skillconditiontype.poisondamage);
+        poisondamage += GameManager.instance.GetPlayerinfo().GetItemPassive(itemPassive, playerinfo.skillconditiontype.poisondamage);
+        poisondamage += GameManager.instance.GetPlayerinfo().getillustrationvalue(illustration, playerinfo.skillconditiontype.poisondamage);
+        //int poisondamage_basehpper = GameManager.instance.GetPlayerinfo().getskilldatasvalue(skilldatas, playerinfo.skillconditiontype.poisondamage_basehpper);
+        int poisondamage_basehpper = GameManager.instance.GetPlayerinfo().GetTotalUseSkilldatasValue(skilldatas, playerinfo.skillconditiontype.poisondamage_basehpper);
+        poisondamage_basehpper += GameManager.instance.GetPlayerinfo().GetItemPassive(itemPassive, playerinfo.skillconditiontype.poisondamage_basehpper);
+        poisondamage_basehpper += GameManager.instance.GetPlayerinfo().getillustrationvalue(illustration, playerinfo.skillconditiontype.poisondamage_basehpper);
+        //int bombdamage = GameManager.instance.GetPlayerinfo().getskilldatasvalue(skilldatas, playerinfo.skillconditiontype.bombdamage);
+        int bombdamage = GameManager.instance.GetPlayerinfo().GetTotalUseSkilldatasValue(skilldatas, playerinfo.skillconditiontype.bombdamage);
+        bombdamage += GameManager.instance.GetPlayerinfo().GetItemPassive(itemPassive, playerinfo.skillconditiontype.bombdamage);
+        bombdamage += GameManager.instance.GetPlayerinfo().getillustrationvalue(illustration, playerinfo.skillconditiontype.bombdamage);
+        //int stun_rate = GameManager.instance.GetPlayerinfo().getskilldatasvalue(skilldatas, playerinfo.skillconditiontype.stun_rate);
+        int stun_rate = GameManager.instance.GetPlayerinfo().GetTotalUseSkilldatasValue(skilldatas, playerinfo.skillconditiontype.stun_rate);
+        stun_rate += GameManager.instance.GetPlayerinfo().GetItemPassive(itemPassive, playerinfo.skillconditiontype.stun_rate);
+        stun_rate += GameManager.instance.GetPlayerinfo().getillustrationvalue(illustration, playerinfo.skillconditiontype.stun_rate);
+        //int bloodsucking_rate = GameManager.instance.GetPlayerinfo().getskilldatasvalue(skilldatas, playerinfo.skillconditiontype.bloodsucking_rate);
+        int bloodsucking_rate = GameManager.instance.GetPlayerinfo().GetTotalUseSkilldatasValue(skilldatas, playerinfo.skillconditiontype.bloodsucking_rate);
+        bloodsucking_rate += GameManager.instance.GetPlayerinfo().GetItemPassive(itemPassive, playerinfo.skillconditiontype.bloodsucking_rate);
+        bloodsucking_rate += GameManager.instance.GetPlayerinfo().getillustrationvalue(illustration, playerinfo.skillconditiontype.bloodsucking_rate);
+        int deadlypoisondamage = GameManager.instance.GetPlayerinfo().GetTotalUseSkilldatasValue(skilldatas, playerinfo.skillconditiontype.deadlypoison);
+        deadlypoisondamage += GameManager.instance.GetPlayerinfo().GetItemPassive(itemPassive, playerinfo.skillconditiontype.deadlypoison);
+        deadlypoisondamage += GameManager.instance.GetPlayerinfo().getillustrationvalue(illustration, playerinfo.skillconditiontype.deadlypoison);
+
+        Int64 damagetext = damage;
+
+        if (cricount == 1)
+        {
+            damagetext = damage;
+        }
+        else if (cricount > 1)
+        {
+            damagetext = damage / 2;
+        }
+
+        monster.CurHP -= damage;
+        if (monster.CurHP <= 0) monster.CurHP = 0;
+
+        MyTeam.CurHP -= reflectdamage;
+        if (MyTeam.CurHP <= 0) MyTeam.CurHP = 0;
+        if (MyTeam.CurHP > MyTeam.MaxHP) MyTeam.CurHP = MyTeam.MaxHP;
+
+        if (bloodsucking_rate > 0)
+        {
+            Int64 gap = MyTeam.MaxHP - MyTeam.CurHP;
+            MyTeam.CurHP += (int)(gap * bloodsucking_rate);
+            if (MyTeam.CurHP > MyTeam.MaxHP) MyTeam.CurHP = MyTeam.MaxHP;
+        }
+        
+        if (poisondamage > 0 || poisondamage_basehpper > 0)
+        {
+            if (deadlypoisondamage > 0)
+            {
+                ShowDeadlyPoisonEffect(false);
+            }
+
+            monster.teambuff.poisondamage += poisondamage;
+            Int64 addpoisondamage = (Int64)((MyTeam.GetMyTurn().damage + MyTeam.addDamage) * (double)((poisondamage_basehpper) * 0.0001f));
+            monster.teambuff.poisondamage += addpoisondamage;
+
+            double poisonminusvalue = ((double)monster.teambuff.poisondamage * 0.1f);
+            poisonminusvalue = Math.Round(poisonminusvalue * 100) / 100;
+            monster.teambuff.poisonminusdamage = (Int64)poisonminusvalue;  //한번에 10%씩 빠진다.
+                                                                           //EnemyTeam.teambuff.poisonminusdamage += (int)(poisondamage * 0.1f);  //한번에 10%씩 빠진다.
+            ShowPoisonEffect(false);
+        }
+
+        else
+        {
+            if (monster.teambuff.poisondamage > 0)
+            {
+                if (deadlypoisondamage > 0)
+                {
+                    ShowDeadlyPoisonEffect(false);
+                }
+
+                double poisonminusvalue = ((double)monster.teambuff.poisondamage * 0.1f);
+                poisonminusvalue = Math.Round(poisonminusvalue * 100) / 100;
+                monster.teambuff.poisonminusdamage = (Int64)poisonminusvalue;
+                ShowPoisonEffect(false);
+            }
+        }
+
+        if (bombdamage > 0)
+        {
+            monster.teambuff.bombdamage = bombdamage;
+            ShowBombEffect(false);
+        }
+
+        if (stun_rate > 0)
+        {
+            int ran = random.Next(0, 10000);
+
+            if (ran < 1000 + stun_rate)
+                monster.teambuff.sturn = 1;
+        }
+        return damagetext;
+    }
+
+    IEnumerator pcHitEnemy(float time, int cricount)
+    {
+        PVPFieldObj.transform.Find("Enemy/Skill").gameObject.SetActive(true);
+        PVPFieldObj.transform.Find("Enemy/Skill/DamageRed").gameObject.SetActive(false);
+        PVPFieldObj.transform.Find("Enemy/Skill/DamageRed2").gameObject.SetActive(false);
+        PVPFieldObj.transform.Find("Enemy/Skill/Damage").gameObject.SetActive(false);
+        PVPFieldObj.transform.Find("Enemy/Skill/Hemorrhage").gameObject.SetActive(false);
+        PVPFieldObj.transform.Find("Enemy/Skill/1").gameObject.SetActive(false);
+
+        yield return new WaitForSeconds(time);
+
+        GameManager.instance.EnableBackKey = false;
+
+        int chainAttack = 0;
+        int brokenShield = 0;
+        Int64 reflectdamage = 0;
+        Int64 outpoisondamage = 0;
+        Int64 outbombdamage = 0;
+
+        Int64 damagetext = pchitenemy(cricount, out chainAttack, out brokenShield, out reflectdamage, out outpoisondamage, out outbombdamage);
+
+        isOnDamage = true;
+
+        if(PVPFieldObj)
+        {
+            if (cricount > 0)
+            {
+                Transform damage = PVPFieldObj.transform.Find("Enemy//Damage2");
+                damage.GetComponent<UILabel>().text = "-" + ProcessButton.instance.GetOverNumString(damagetext, 0.0, "N0");
+                damage.GetComponent<TweenPosition>().PlayForward();
+                damage.GetComponent<TweenPosition>().ResetToBeginning();
+                damage.GetComponent<TweenAlpha>().PlayForward();
+                damage.GetComponent<TweenAlpha>().ResetToBeginning();
+
+                if (cricount > 1)
+                {
+                    StartCoroutine(delaycriticaldamage(0.5f, PVPFieldObj.transform.Find("Enemy//Damage3").gameObject, damagetext));
+                }
+            }
+            else
+            {
+                Transform damage = PVPFieldObj.transform.Find("Enemy//Damage");
+                damage.GetComponent<UILabel>().text = "-" + ProcessButton.instance.GetOverNumString(damagetext, 0.0, "N0");
+                damage.GetComponent<TweenPosition>().PlayForward();
+                damage.GetComponent<TweenPosition>().ResetToBeginning();
+                damage.GetComponent<TweenAlpha>().PlayForward();
+                damage.GetComponent<TweenAlpha>().ResetToBeginning();
+            }
+
+            if (outpoisondamage > 0)
+            {
+                Transform damage = PVPFieldObj.transform.Find("Enemy/Skill/DamageGreen");
+                damage.gameObject.SetActive(false);
+                damage.gameObject.SetActive(true);
+                damage.GetComponent<UILabel>().text = "-" + ProcessButton.instance.GetOverNumString(outpoisondamage, 0.0, "N0");
+            }
+            if (outbombdamage > 0)
+            {
+                Transform damage = PVPFieldObj.transform.Find("Enemy/Skill/DamageRed");
+                damage.gameObject.SetActive(false);
+                damage.gameObject.SetActive(true);
+                damage.GetComponent<UILabel>().text = "-" + ProcessButton.instance.GetOverNumString(outbombdamage, 0.0, "N0");
+            }
+
+            PVPFieldObj.transform.Find("Enemy/").GetComponent<TweenPosition>().PlayForward();
+            PVPFieldObj.transform.Find("Enemy/").GetComponent<TweenPosition>().ResetToBeginning();
+
+            PVPFieldObj.transform.Find("Enemy//Back/Pc").GetComponent<TweenColor>().from = Util.SetupSilhouette();
+            PVPFieldObj.transform.Find("Enemy//Back/Pc").GetComponent<TweenColor>().to = Util.SetupSilhouette(true);
+            PVPFieldObj.transform.Find("Enemy//Back/Pc").GetComponent<TweenColor>().PlayForward();
+            PVPFieldObj.transform.Find("Enemy//Back/Pc").GetComponent<TweenColor>().ResetToBeginning();
+
+            if (cricount > 0)
+            {
+                if (cricount > 1)
+                {
+                    PVPFieldObj.transform.Find("Enemy//P_Attack01_S_Cri1").gameObject.SetActive(false);
+                    PVPFieldObj.transform.Find("Enemy//P_Attack01_S_Cri1").gameObject.SetActive(true);
+
+                    StartCoroutine(delaycriticaleffect(0.5f, PVPFieldObj.transform.Find("Enemy//P_Attack01_S_Cri2").gameObject, false));
+                    StartCoroutine(delaycriticaleffect(0.5f, PVPFieldObj.transform.Find("Enemy//P_Attack01_S_Cri2").gameObject, true));
+                }
+                else
+                {
+                    PVPFieldObj.transform.Find("Enemy//P_Attack01_S_Cri1").gameObject.SetActive(false);
+                    PVPFieldObj.transform.Find("Enemy//P_Attack01_S_Cri1").gameObject.SetActive(true);
+                }
+            }
+            else
+            {
+                PVPFieldObj.transform.Find("Enemy//P_Attack01").gameObject.SetActive(false);
+                PVPFieldObj.transform.Find("Enemy//P_Attack01").gameObject.SetActive(true);
+            }
+
+            SoundManager.Instance.Play(SoundType.SE_PVEMonster);
+            SoundManager.Instance.Play(SoundType.SE_HitSound);
+
+            PVPFieldObj.transform.Find("PcBack").GetComponent<UITexture>().color = Util.GetPVEBackColor();
+            PVPFieldObj.transform.Find("Enemy/EnemyBack").GetComponent<UITexture>().color = Util.GetPVEBackColor();
+            PVPFieldObj.transform.Find("PC//AttackEffect").gameObject.SetActive(false);
+
+            string sendData = string.Format("{0}/{1}/{2}/{3}", currentDungeonIndex, damagetext, MyTeam.GetMyTurn().UniqueID, cricount);
+            ProcessButton.instance.sendtotalpacket3(Totalpacket_type.GuildDungeonAttack, sendData, "", "");
+
+            StartCoroutine(delayEnableBackkey(1f));
+        }
+    }
+
+    IEnumerator delayEnableBackkey(float time)
+    {
+        yield return new WaitForSeconds(time);
+
+        GameManager.instance.EnableBackKey = true;
+        BackKeyManager.SetBackKeyAction(PVPFieldObj.transform.Find("PC/ButtonExit").GetComponent<UIButton>());
+    }
+
+    IEnumerator delaycriticaleffect(float time, GameObject obj, bool flag)
+    {
+        yield return new WaitForSeconds(time);
+
+        obj.gameObject.SetActive(flag);
+    }
+
+    IEnumerator delaycriticaldamage(float time, GameObject obj, Int64 damage)
+    {
+        yield return new WaitForSeconds(time);
+
+        obj.GetComponent<UILabel>().text = "-" + ProcessButton.instance.GetOverNumString(damage, 0.0, "N0");
+        obj.GetComponent<TweenPosition>().PlayForward();
+        obj.GetComponent<TweenPosition>().ResetToBeginning();
+        obj.GetComponent<TweenAlpha>().PlayForward();
+        obj.GetComponent<TweenAlpha>().ResetToBeginning();
+    }
+
+    private void Updatehp()
+    {
+        var enemyGage = PVPFieldObj.transform.Find("Enemy/Enemy/HP/Gage").GetComponent<UIProgressBar>();
+        var enemyGage2 = PVPFieldObj.transform.Find("Enemy/Enemy/HP/Gage2").GetComponent<UIProgressBar>();
+
+        enemyGage.value = (float)((double)monster.CurHP / (double)monster.MaxHP);
+        enemyGage2.value = (float)((double)monster.CurHP2 / (double)monster.MaxHP);
+
+        PVPFieldObj.transform.Find("Enemy/Enemy/HP/Label").GetComponent<UILabel>().text = string.Format("{0:f2}%", Util.GetUniformVelocityFloat(0f, 100f, monster.CurHP, monster.MaxHP));
+    }
+
+    public void ShowDeadlyPoisonEffect(bool isMyTeam)
+    {
+        if (isMyTeam)
+        {
+            PVPFieldObj.transform.Find("PC/DeadlyPoison").gameObject.SetActive(true);
+            PVPFieldObj.transform.Find("PC/DeadlyPoison").GetComponent<TweenScale>().ResetToBeginning();
+            PVPFieldObj.transform.Find("PC/DeadlyPoison").GetComponent<TweenScale>().PlayForward();
+            PVPFieldObj.transform.Find("PC/DeadlyPoison").GetComponent<TweenAlpha>().ResetToBeginning();
+            PVPFieldObj.transform.Find("PC/DeadlyPoison").GetComponent<TweenAlpha>().PlayForward();
+        }
+        else
+        {
+            PVPFieldObj.transform.Find("Enemy/DeadlyPoison").gameObject.SetActive(true);
+            PVPFieldObj.transform.Find("Enemy/DeadlyPoison").GetComponent<TweenScale>().ResetToBeginning();
+            PVPFieldObj.transform.Find("Enemy/DeadlyPoison").GetComponent<TweenScale>().PlayForward();
+            PVPFieldObj.transform.Find("Enemy/DeadlyPoison").GetComponent<TweenAlpha>().ResetToBeginning();
+            PVPFieldObj.transform.Find("Enemy/DeadlyPoison").GetComponent<TweenAlpha>().PlayForward();
+        }
+    }
+
+    public void ShowPoisonEffect(bool isMyTeam)
+    {
+        if (isMyTeam)
+        {
+            PVPFieldObj.transform.Find("PC/Skill/2").gameObject.SetActive(true);
+            Util.PlayParticle(PVPFieldObj.transform.Find("PC/Skill/2/FX").gameObject);
+
+            PVPFieldObj.transform.Find("PC/Skill/DamageGreen2").gameObject.SetActive(true);
+            PVPFieldObj.transform.Find("PC/Skill/DamageGreen2").GetComponent<UILabel>().text = ProcessButton.instance.GetOverNumString(MyTeam.teambuff.poisondamage, 0.0, "N0");
+        }
+        else
+        {
+            PVPFieldObj.transform.Find("Enemy/Skill/2").gameObject.SetActive(true);
+            Util.PlayParticle(PVPFieldObj.transform.Find("Enemy/Skill/2/FX").gameObject);
+
+            PVPFieldObj.transform.Find("Enemy/Skill/DamageGreen2").GetComponent<UILabel>().text = ProcessButton.instance.GetOverNumString(monster.teambuff.poisondamage, 0.0, "N0");
+            PVPFieldObj.transform.Find("Enemy/Skill/DamageGreen2").gameObject.SetActive(true);
+        }
+    }
+
+    public void ShowBombEffect(bool isMyTeam)
+    {
+        if (isMyTeam)
+        {
+            PVPFieldObj.transform.Find("PC/Skill/1").gameObject.SetActive(true);
+            Util.PlayParticle(PVPFieldObj.transform.Find("PC/Skill/1/FX").gameObject);
+
+            PVPFieldObj.transform.Find("PC/Skill/DamageRed2").gameObject.SetActive(true);
+        }
+        else
+        {
+            PVPFieldObj.transform.Find("Enemy/Skill/1").gameObject.SetActive(true);
+            Util.PlayParticle(PVPFieldObj.transform.Find("Enemy/Skill/1/FX").gameObject);
+
+            PVPFieldObj.transform.Find("Enemy/Skill/DamageRed2").gameObject.SetActive(true);
+        }
+    }
+
+    void updatestate()
+    {
+        if (MyTeam.teambuff.poisondamage > 0)
+        {
+            PVPFieldObj.transform.Find("PC/Skill/DamageGreen2").gameObject.SetActive(true);
+            PVPFieldObj.transform.Find("PC/Skill/DamageGreen2").GetComponent<UILabel>().text = ProcessButton.instance.GetOverNumString(MyTeam.teambuff.poisondamage, 0.0, "N0");
+        }
+        else
+        {
+            PVPFieldObj.transform.Find("PC/Skill/2").gameObject.SetActive(false);
+            PVPFieldObj.transform.Find("PC/Skill/DamageGreen2").gameObject.SetActive(false);
+        }
+
+        if (MyTeam.teambuff.bombdamage > 0)
+        {
+            PVPFieldObj.transform.Find("PC/Skill/DamageRed2").gameObject.SetActive(true);
+        }
+        else
+        {
+            PVPFieldObj.transform.Find("PC/Skill/1").gameObject.SetActive(false);
+            PVPFieldObj.transform.Find("PC/Skill/DamageRed2").gameObject.SetActive(false);
+        }
+
+        if (monster.teambuff.poisondamage > 0)
+        {
+            PVPFieldObj.transform.Find("Enemy/Skill/DamageGreen2").GetComponent<UILabel>().text = ProcessButton.instance.GetOverNumString(monster.teambuff.poisondamage, 0.0, "N0");
+            PVPFieldObj.transform.Find("Enemy/Skill/DamageGreen2").gameObject.SetActive(true);
+        }
+        else
+        {
+            PVPFieldObj.transform.Find("Enemy/Skill/2").gameObject.SetActive(false);
+            PVPFieldObj.transform.Find("Enemy/Skill/DamageGreen2").gameObject.SetActive(false);
+        }
+
+        if (monster.teambuff.bombdamage > 0)
+        {
+            PVPFieldObj.transform.Find("Enemy/Skill/DamageRed2").gameObject.SetActive(true);
+        }
+        else
+        {
+            PVPFieldObj.transform.Find("Enemy/Skill/1").gameObject.SetActive(false);
+            PVPFieldObj.transform.Find("Enemy/Skill/DamageRed2").gameObject.SetActive(false);
+        }
+
+        if (MyTeam.teambuff.deadlypoisondamage > 0)
+        {
+            PVPFieldObj.transform.Find("PC/DeadlyPoison").gameObject.SetActive(true);
+        }
+
+        if (monster.teambuff.deadlypoisondamage > 0)
+        {
+            PVPFieldObj.transform.Find("Enemy/DeadlyPoison").gameObject.SetActive(true);
+        }
+    }
+
+    private void OnRefreshPortrait(GameObject obj, int Index)
+    {
+        if (obj == null) return;
+        if (MyTeam.Objects == null) return;
+        if (MyTeam.Objects.Count - 1 < Index) return;
+
+        string profile_src = GameDataManager.someTemplate[MyTeam.Objects[Index].ID, (int)GameDataManager.someTemplate_.profile_src];
+        string grade = GameDataManager.someTemplate[MyTeam.Objects[Index].ID, (int)GameDataManager.someTemplate_.grade];
+
+        int costumeID = GameManager.instance.GetPlayerinfo().GetEquipCostume(MyTeam.Objects[Index].UniqueID);
+        if (costumeID > 0)
+            profile_src = "P" + GameDataManager.Costume[costumeID, (int)GameDataManager.Costume_.full_src];
+
+        Texture texture = ResourceLoader.Load_Character(string.Format("_{0}/{1}", MyTeam.Objects[Index].ID, profile_src)) as Texture;
+        obj.transform.Find("").GetComponent<UITexture>().mainTexture = texture;
+        obj.transform.Find("").GetComponent<UITexture>().color = Util.SetupSilhouette();
+        obj.transform.Find("/Star").GetComponent<UISprite>().spriteName = "Star" + grade;
+        obj.transform.Find("ClassBorder").GetComponent<UISprite>().color = Util.Getitemcolorbygrade(int.Parse(grade));
+        obj.transform.Find("CheckMark").gameObject.SetActive(MyTeam.Objects[Index].isAttackEnd);
+    }
+
+    private void OnClickPortrait(GameObject obj, int Index)
+    {
+        if (obj == null) return;
+        if (MyTeam.Objects == null) return;
+        if (MyTeam.Objects.Count - 1 < Index) return;
+        if (bAutoPlay) return;
+
+        OnClickChange(Index);
+    }
+    bool isGetWindow = false;
+
+    int rewardType_Later = 0;
+    int rewardValue_Later = 0;
+    bool isGetWindowLater = false;
+    public void ShowRewardPopup_Later(int rewardType, int rewardValue)
+    {
+        isGetWindowLater = true;
+        rewardType_Later = rewardType;
+        rewardValue_Later = rewardValue;
+    }
+
+    public void ShowRewardPopup(int rewardType, int rewardValue)
+    {
+        isGetWindow = true;
+        PVPFieldObj.transform.Find("GetWindow/itemslot_items2").GetComponent<UISprite>().spriteName = ProcessButton.instance.rewardtypename(rewardType.ToString());
+        PVPFieldObj.transform.Find("GetWindow/itemslot_items2/desc").GetComponent<UILabel>().text = string.Format("{0}", rewardValue);
+        if(rewardType == 40)
+            PVPFieldObj.transform.Find("GetWindow/addpoint").GetComponent<UILabel>().text = string.Format(/*TextManager.Instance.GetString("BTF_TEXT_0006")*/"길드자산 + {0}", rewardValue);
+        else
+            PVPFieldObj.transform.Find("GetWindow/addpoint").GetComponent<UILabel>().text = string.Format(TextManager.Instance.GetString("BTF_TEXT_0006"), rewardValue);
+        PVPFieldObj.transform.Find("GetWindow/Back").GetComponent<UIButton>().onClick.Clear();
+        PVPFieldObj.transform.Find("GetWindow/Back").GetComponent<UIButton>().onClick.Add(new EventDelegate(() =>
+        {
+            isGetWindow = false;
+            PVPFieldObj.transform.Find("GetWindow").gameObject.SetActive(false);
+            if (isMonsterDead)
+            {
+                killMonster();
+            }
+
+        }));
+
+        StartCoroutine(RoutineShowRewardPopup());
+    }
+
+    private IEnumerator RoutineShowRewardPopup()
+    {
+        yield return new WaitForSeconds(0.5f);
+
+        SoundManager.Instance.Play(SoundType.SE_RewardPopup);
+        PVPFieldObj.transform.Find("GetWindow").gameObject.SetActive(true);
+        PVPFieldObj.transform.Find("GetWindow").GetComponent<TweenScale>().ResetToBeginning();
+        PVPFieldObj.transform.Find("GetWindow").GetComponent<TweenScale>().PlayForward();
+    }
+
+    private void AutoPlay()
+    {
+        if (bAutoPlay && !isPlayAttack && !isAutoAttacking)
+        {
+            isAutoAttacking = true;
+            PVPFieldObj.transform.Find("GetWindow").gameObject.SetActive(false);
+            OnClickAttack();
+        }
+
+        if (bAutoPlay && MyTeam.IsEndTurn())
+        {
+            bAutoPlay = false;
+            PVPFieldObj.transform.Find("PC/ButtonAuto/Label").GetComponent<UILabel>().text = TextManager.Instance.GetString("BTF_TEXT_0003");
+            
+        }
+    }
+    public int GetCurrentDungeonIndex()
+    {
+        return currentDungeonIndex;
+    }
+
+    public void killMonster()
+    {
+        SoundManager.Instance.Play(SoundType.SE_VictoryHunting);
+        isMonsterDead = true;
+
+        if (!isGetWindow)
+        {
+            PVPFieldObj.transform.Find("Result2/rewarditem/Item1").gameObject.SetActive(true);
+            PVPFieldObj.transform.Find("Result2/rewarditem/Item1/Sprite").GetComponent<UISprite>().spriteName = Util.GetGoodsIcon(playerinfo.goodsType.guildmypoint);
+            PVPFieldObj.transform.Find("Result2/rewarditem/Item1/Sprite/Label").GetComponent<UILabel>().text = string.Format("{0}", 50);
+            PVPFieldObj.transform.Find("Result2").gameObject.SetActive(true);
+            PVPFieldObj.transform.Find("Result2/ToLobby").GetComponent<UIButton>().onClick.Add(new EventDelegate(OnClickExit));
+        }
+       
+    }
+}
