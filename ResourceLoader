@@ -1,0 +1,1057 @@
+using UnityEngine;
+using System.Collections.Generic;
+using UnityEngine.Profiling;
+using UnityEngine.Networking;
+
+interface IResoucesLoader
+{
+    Object Load_Atlas( string assetName );
+
+    Object Load_Character( string assetName );
+
+    Object Load_Character(int _girlID, string _profileDesc);
+
+    Object Load_FX( string assetName );
+
+    Object Load_GachaBanner( string assetName );
+
+    Object Load_Monster( string assetName );
+
+    Object Load_MysteryMonster(string assetName);
+
+    Object Load_NPC( string assetName );
+
+    Object Load_Prefabs( string assetName );
+
+    Object Load_Sound( string assetName );
+
+    Object Load_Text( string assetName );
+
+    Object Load_Texture( string assetName );
+
+    Object Load_RealTime(string assetName);
+
+    bool IsExistAsset(int type, string assectName);
+
+    void PreLoad();
+
+    void Reload();
+
+    void ReloadRealTime();
+
+    void UnloadUnusedAssets( bool isForceUnload );
+
+    Object Load_Baby(string assetName);
+}
+
+public class ResourceLoader
+{
+    public enum LoadType
+    {
+        LocalResource,
+        DownloadedResource
+    }
+
+    public static LoadType loadType = LoadType.LocalResource;
+    static IResoucesLoader loader;
+    static IResoucesLoader Loader
+    {
+        get
+        {
+            if( loader == null )
+                Initialize();
+
+            return loader;
+        }
+    }
+
+    private static int ClearCount = 0;
+
+    static void Initialize()
+    {
+        switch( loadType )
+        {
+            case LoadType.LocalResource:
+                loader = new EditorResouceLoader();
+                break;
+            case LoadType.DownloadedResource:
+                loader = new DownloadedResourceLoader();
+                break;
+        }
+    }
+
+    public static void Create()
+    {
+        if (loader == null)
+            Initialize();
+    }
+
+    public static Object Load_Atlas( string assetName )
+    {
+        return Loader.Load_Atlas( assetName );
+    }
+
+    public static Object Load_Character( string assetName )
+    {
+        string[] temp = assetName.Split('/');
+        string textureName = temp[1];
+        temp = temp[0].Split('_');
+        string girlID = temp[1];
+        string sameTextureGirlID = CommonFunction.GetSameTextureGirlID(girlID);
+        if (sameTextureGirlID != "0")
+        {
+            assetName = string.Format("Girl_{0}/{1}", sameTextureGirlID, textureName);
+        }
+
+        return Loader.Load_Character( assetName );
+    }
+
+    public static Object Load_Character(int _girlID, string _profileDesc)
+    {
+        return Loader.Load_Character(_girlID, _profileDesc);
+    }
+
+    public static Object Load_FX( string assetName )
+    {
+        return Loader.Load_FX( assetName );
+    }
+
+    public static Object Load_GachaBanner( string assetName )
+    {
+        return Loader.Load_GachaBanner( assetName );
+    }
+  
+    public static Object Load_Monster( string assetName )
+    {
+        return Loader.Load_Monster( assetName );
+    }
+
+    public static Object Load_MysteryMonster(string assetName)
+    {
+        return Loader.Load_MysteryMonster(assetName);
+    }
+
+    public static Object Load_NPC( string assetName )
+    {
+        return Loader.Load_NPC( assetName );
+    }
+
+    public static Object Load_Prefabs( string assetName )
+    {
+        return Loader.Load_Prefabs( assetName );
+    }
+
+    public static Object Load_Sound( string assetName )
+    {
+        return Loader.Load_Sound( assetName );
+    }
+
+    public static Object Load_Text( string assetName )
+    {
+        return Loader.Load_Text( assetName );
+    }
+
+    public static Object Load_Texture( string assetName )
+    {
+        return Loader.Load_Texture( assetName );
+    }
+
+    public static Object Load_RealTime(string assetName)
+    {
+        return Loader.Load_RealTime(assetName);
+    }
+
+    public static bool IsExistAsset(int type, string assetName)
+    {
+        return Loader.IsExistAsset(type, assetName);
+    }
+
+    public static void PreLoad()
+    {
+        Loader.PreLoad();
+    }
+
+    public static void Reload()
+    {
+        Loader.Reload();
+    }
+
+    public static void ReloadRealTime()
+    {
+        Loader.ReloadRealTime();
+    }
+
+    public static void UnloadResources(bool isForceUnload)
+    {
+        if (ClearCount.Equals(100))
+        {
+            ClearCount = 0;
+            Loader.UnloadUnusedAssets(isForceUnload);
+        }
+        else
+        {
+            ClearCount += 1;
+        }
+    }
+
+    public static Object Load_Baby(string assetName)
+    {
+        string[] temp = assetName.Split('/');
+        string textureName = temp[1];
+        temp = temp[0].Split('_');
+        string babyID = temp[1];
+        assetName = string.Format("Baby{0}/{1}", babyID, textureName);
+
+        return Loader.Load_Baby(assetName);
+    }
+}
+
+public class EditorResouceLoader : IResoucesLoader
+{
+    public Object Load_Atlas( string assetName )
+    {
+        //return LoadResource_Prefab( "atlas.assetbundle", assetName);
+        return LoadResource_Prefab(string.Format("atlas/{0}.assetbundle", assetName), assetName);
+    }
+
+    public Object Load_Character( string assetName )
+    {
+        string[] bundleName = assetName.Split('/');
+        return LoadResource(string.Format("character/{0}.assetbundle", bundleName[0].ToLower()), bundleName[1]);
+    }
+
+    public Object Load_Character(int _girlID, string _profileDesc)
+    {
+        string assetName = string.Format("Girl_{0}/{1}", _girlID, _profileDesc);
+
+        return Load_Character(assetName);
+    }
+
+    public Object Load_FX( string assetName )
+    {
+        return LoadResource( "fx.assetbundle", assetName );
+    }
+
+    public Object Load_GachaBanner( string assetName )
+    {
+        return LoadResource( "gachabanner.assetbundle", assetName );
+    }
+
+    public Object Load_Monster( string assetName )
+    {
+        return LoadResource( "monster.assetbundle", assetName );
+    }
+
+    public Object Load_MysteryMonster(string assetName)
+    {
+        return LoadResource(string.Format("mysterymonster/{0}.assetbundle", assetName), assetName);
+    }
+
+    public Object Load_NPC( string assetName )
+    {
+        return LoadResource( "npc.assetbundle", assetName );
+    }
+
+    public Object Load_Prefabs( string assetName )
+    {
+        //return LoadResource("prefabs.assetbundle", assetName);
+        string[] bundleName = assetName.Split('/');
+        return LoadResource(string.Format("prefabs/{0}.assetbundle", bundleName[0].ToLower()), bundleName[1]);
+    }
+
+    public Object Load_Sound( string assetName )
+    {
+        string[] bundleName = assetName.Split('/');
+        return LoadResource(string.Format("sound/{0}.assetbundle", bundleName[0].ToLower()), bundleName[1]);
+    }
+
+    public Object Load_Text( string assetName )
+    {
+        return LoadResource( "text.assetbundle", assetName );
+    }
+
+    public Object Load_Texture( string assetName )
+    {
+        string[] bundleName = assetName.Split('/');
+        return LoadResource(string.Format("texture/{0}.assetbundle", bundleName[0].ToLower()), bundleName[1]);
+    }
+
+    public Object Load_RealTime(string assetName)
+    {
+        return LoadResource("realtime.assetbundle", assetName);
+    }
+
+    public Object Load_Baby(string assetName)
+    {
+        string[] bundleName = assetName.Split('/');
+        return LoadResource(string.Format("babycharacter/{0}.assetbundle", bundleName[0].ToLower()), bundleName[1]);
+    }
+
+    Object LoadResource( string bundleName, string assetName )
+    {
+#if UNITY_EDITOR
+        string[] assetPaths = UnityEditor.AssetDatabase.GetAssetPathsFromAssetBundleAndAssetName( bundleName, assetName );
+
+        if( assetPaths.Length == 0 )
+        {
+            Debug.LogError( "There is no asset with name \"" + assetName + "\" in " + bundleName );
+            return null;
+        }
+
+        Object obj = UnityEditor.AssetDatabase.LoadMainAssetAtPath( assetPaths[ 0 ] );
+
+        if( obj == null ) return null;
+
+        return obj;
+#else
+        return null;
+#endif
+    }
+
+    Object LoadResource_Prefab(string bundleName, string assetName)
+    {
+#if UNITY_EDITOR
+        string[] assetPaths = UnityEditor.AssetDatabase.GetAssetPathsFromAssetBundleAndAssetName(bundleName, assetName);
+
+        if (assetPaths.Length == 0)
+        {
+            Debug.LogError("There is no asset with name \"" + assetName + "\" in " + bundleName);
+            return null;
+        }
+
+        string[] splitPath = assetPaths[0].Split('.');
+        string changePath = splitPath[0] + ".prefab";
+        Object obj = UnityEditor.AssetDatabase.LoadMainAssetAtPath(changePath);
+
+        if (obj == null) return null;
+
+        return obj;
+#else
+        return null;
+#endif
+    }
+
+    public bool IsExistAsset(int type, string assetName)
+    {
+#if UNITY_EDITOR
+        string[] bundleName;
+        bundleName = new string[2];
+        switch (type)
+        {
+            case 0:
+                bundleName[0] = string.Format("atlas/{0}.assetbundle", assetName);
+                bundleName[1] = assetName;
+                break;
+            case 1:
+                bundleName[0] = "fx.assetbundle";
+                bundleName[1] = assetName;
+                break;
+            case 2:
+                bundleName[0] = "gachabanner.assetbundle";
+                bundleName[1] = assetName;
+                break;
+            case 3:
+                bundleName[0] = "monster.assetbundle";
+                bundleName[1] = assetName;
+                break;
+            case 4:
+                bundleName[0] = "npc.assetbundle";
+                bundleName[1] = assetName;
+                break;
+            case 5:
+                bundleName[0] = "text.assetbundle";
+                bundleName[1] = assetName;
+                break;
+            case 6:
+                bundleName = assetName.Split('/');
+                bundleName[0] = string.Format("character/{0}.assetbundle", bundleName[0].ToLower());
+                break;
+            case 7:
+                bundleName = assetName.Split('/');
+                bundleName[0] = string.Format("sound/{0}.assetbundle", bundleName[0].ToLower());
+                break;
+            case 8:
+                bundleName = assetName.Split('/');
+                bundleName[0] = string.Format("texture/{0}.assetbundle", bundleName[0].ToLower());
+                break;
+            case 9:
+                bundleName = assetName.Split('/');
+                bundleName[0] = string.Format("prefabs/{0}.assetbundle", bundleName[0].ToLower());
+                break;
+            case 10:
+                bundleName[0] = string.Format("misterymonster/{0}.assetbundle", assetName);
+                bundleName[1] = assetName;
+                break;
+        }
+        string[] assetPaths = UnityEditor.AssetDatabase.GetAssetPathsFromAssetBundleAndAssetName(bundleName[0], bundleName[1]);
+        return assetPaths.Length > 0;
+#else
+        return false;
+#endif
+
+    }
+
+    public void PreLoad()
+    {
+        return;
+    }
+
+    public void Reload()
+    {
+        return;
+    }
+
+    public void ReloadRealTime()
+    {
+        return;
+    }
+
+    public void UnloadUnusedAssets( bool isForceUnload )
+    {
+        Resources.UnloadUnusedAssets();
+        System.GC.Collect();
+    }
+}
+
+public class DownloadedResourceLoader : IResoucesLoader
+{
+    protected Dictionary<string, AssetBundle> dic_SubDirBundles;
+    protected AssetBundle bundle_FX;
+    protected AssetBundle bundle_GachaBanner;
+    protected AssetBundle bundle_Monster;
+    protected AssetBundle bundle_NPC;
+    protected AssetBundle bundle_Prefabs;
+    protected AssetBundle bundle_Text;
+    protected AssetBundle bundle_RealTime;
+
+    protected int countUnload = 0;
+  
+    protected AssetBundle FX
+    {
+        get
+        {
+            if( bundle_FX == null )
+            {
+                PatchData data = PatchManager.instance.PatchList.FindDataWithAssetFileName( "fx.assetbundle" );
+
+                if( Caching.IsVersionCached( string.Format( "{0}/fx.assetbundle", PatchManager.patchURL), data.hash ) )
+                {
+                    using( UnityWebRequest www = UnityWebRequestAssetBundle.GetAssetBundle( string.Format( "{0}/fx.assetbundle", PatchManager.patchURL), data.hash,0 ) )
+                    {
+                        www.SendWebRequest();
+
+                        while (!www.isDone)
+                        {
+                        }
+
+                        bundle_FX = DownloadHandlerAssetBundle.GetContent(www);
+                        www.Dispose();
+                    }
+                }
+                else
+                {
+                    if(bundle_FX == null && Application.isEditor )
+                        Debug.LogError( "cannot load fx.asset" );
+                }
+            }
+
+            return bundle_FX;
+        }
+    }
+
+    protected AssetBundle GachaBaaner
+    {
+        get
+        {
+            if( bundle_GachaBanner == null )
+            {
+                PatchData data = PatchManager.instance.PatchList.FindDataWithAssetFileName( "gachabanner.assetbundle" );
+                if( Caching.IsVersionCached( string.Format("{0}/gachabanner.assetbundle", PatchManager.patchURL), data.hash ) )
+                {
+                    using( UnityWebRequest www = UnityWebRequestAssetBundle.GetAssetBundle( string.Format("{0}/gachabanner.assetbundle", PatchManager.patchURL), data.hash ,0) )
+                    {
+                        www.SendWebRequest();
+
+                        while (!www.isDone)
+                        {
+                        }
+
+                        bundle_GachaBanner = DownloadHandlerAssetBundle.GetContent(www);
+                        www.Dispose();
+                    }
+                }
+                else
+                {
+                    if(bundle_GachaBanner == null && Application.isEditor )
+                        Debug.LogError("cannot load gachabanner.asset");
+                }
+            }
+
+            return bundle_GachaBanner;
+        }
+    }
+
+    protected AssetBundle Monster
+    {
+        get
+        {
+            if( bundle_Monster == null )
+            {
+                PatchData data = PatchManager.instance.PatchList.FindDataWithAssetFileName( "monster.assetbundle" );
+                if( Caching.IsVersionCached( string.Format("{0}/monster.assetbundle", PatchManager.patchURL), data.hash ) )
+                {
+                    using (UnityWebRequest www = UnityWebRequestAssetBundle.GetAssetBundle(string.Format("{0}/monster.assetbundle", PatchManager.patchURL), data.hash, 0))
+                    {
+                        www.SendWebRequest();
+
+                        while (!www.isDone)
+                        {
+                        }
+
+                        bundle_Monster = DownloadHandlerAssetBundle.GetContent(www);
+                        www.Dispose();
+                    }
+                }
+                else
+                {
+                    if(bundle_Monster == null && Application.isEditor )
+                        Debug.LogError("cannot load monster.asset");
+                }
+            }
+
+            return bundle_Monster;
+        }
+    }
+
+    protected AssetBundle NPC
+    {
+        get
+        {
+            if( bundle_NPC == null )
+            {
+                PatchData data = PatchManager.instance.PatchList.FindDataWithAssetFileName( "npc.assetbundle" );
+                if( Caching.IsVersionCached( string.Format("{0}/npc.assetbundle", PatchManager.patchURL), data.hash ) )
+                {
+                    using (UnityWebRequest www = UnityWebRequestAssetBundle.GetAssetBundle(string.Format("{0}/npc.assetbundle", PatchManager.patchURL), data.hash, 0))
+                    {
+                        www.SendWebRequest();
+
+                        while (!www.isDone)
+                        {
+                        }
+
+                        bundle_NPC = DownloadHandlerAssetBundle.GetContent(www);
+                        www.Dispose();
+                    }
+                }
+                else
+                {
+                    if(bundle_NPC == null && Application.isEditor )
+                        Debug.LogError("cannot load npc.asset");
+                }
+            }
+
+            return bundle_NPC;
+        }
+    }
+
+    protected AssetBundle Prefabs
+    {
+        get
+        {
+            if( bundle_Prefabs == null )
+            {
+                PatchData data = PatchManager.instance.PatchList.FindDataWithAssetFileName( "prefabs.assetbundle" );
+                if( Caching.IsVersionCached( string.Format("{0}/prefabs.assetbundle", PatchManager.patchURL), data.hash ) )
+                {
+                    using (UnityWebRequest www = UnityWebRequestAssetBundle.GetAssetBundle(string.Format("{0}/prefabs.assetbundle", PatchManager.patchURL), data.hash, 0))
+                    {
+                        www.SendWebRequest();
+
+                        while (!www.isDone)
+                        {
+                        }
+
+                        bundle_Prefabs = DownloadHandlerAssetBundle.GetContent(www);
+                        www.Dispose();
+                    }
+                }
+                else
+                {
+                    if(bundle_Prefabs == null && Application.isEditor )
+                        Debug.LogError("cannot load prefabs.asset");
+                }
+            }
+
+            return bundle_Prefabs;
+        }
+    }
+
+    protected AssetBundle Text
+    {
+        get
+        {
+            if( bundle_Text == null )
+            {
+                PatchData data = PatchManager.instance.PatchList.FindDataWithAssetFileName( "text.assetbundle" );
+                if( Caching.IsVersionCached( string.Format("{0}/text.assetbundle", PatchManager.patchURL), data.hash ) )
+                {
+                    using( UnityWebRequest www = UnityWebRequestAssetBundle.GetAssetBundle( string.Format("{0}/text.assetbundle", PatchManager.patchURL), data.hash,0 ) )
+                    {
+                        www.SendWebRequest();
+
+                        while (!www.isDone)
+                        {
+                        }
+
+                        bundle_Text = DownloadHandlerAssetBundle.GetContent(www);
+                        www.Dispose();
+                    }
+                }
+                else
+                {
+                    if(bundle_Text == null && Application.isEditor )
+                        Debug.LogError("cannot load text.asset");
+                }
+            }
+
+            return bundle_Text;
+        }
+    }
+
+    protected AssetBundle RealTime
+    {
+        get
+        {
+            if (bundle_RealTime == null)
+            {
+                if (PatchManager.instance.PatchRealTimeList == null)
+                    return bundle_RealTime;
+
+                PatchData data = PatchManager.instance.PatchRealTimeList.FindDataWithAssetFileName("realtime.assetbundle");
+                if (Caching.IsVersionCached(string.Format("{0}/realtime.assetbundle", PatchManager.patchRealTimeURL), data.hash))
+                {
+                    using (UnityWebRequest www = UnityWebRequestAssetBundle.GetAssetBundle(string.Format("{0}/realtime.assetbundle", PatchManager.patchURL), data.hash, 0))
+                    {
+                        www.SendWebRequest();
+
+                        while (!www.isDone)
+                        {
+                        }
+
+                        bundle_RealTime = DownloadHandlerAssetBundle.GetContent(www);
+                        www.Dispose();
+                    }
+                }
+                else
+                {
+                    if (bundle_RealTime == null && Application.isEditor)
+                        Debug.LogError("cannot load realtime.asset");
+                }
+            }
+
+            return bundle_RealTime;
+        }
+    }
+
+    public Object Load_Atlas( string assetName )
+    {
+        return LoadResource_Prefab(Load_SubDirBundles_AssetBundle(string.Format("atlas/{0}", assetName), assetName), assetName);
+    }
+
+    public Object Load_Character( string assetName)
+    {
+        string[] bundleName = assetName.Split('/');
+        return Load_SubDirBundles(string.Format("character/{0}", bundleName[0].ToLower()), bundleName[1]);
+    }
+
+    public Object Load_Character(int _girlID, string _profileDesc)
+    {
+        string assetName = string.Format("Girl_{0}/{1}", _girlID, _profileDesc);
+
+        return Load_Character(assetName);
+    }
+
+    public Object Load_FX( string assetName )
+    {
+        return LoadResource( FX, assetName );
+    }
+
+    public Object Load_GachaBanner( string assetName )
+    {
+        return LoadResource( GachaBaaner, assetName );
+    }
+
+    public Object Load_Monster( string assetName)
+    {
+        return LoadResource(Monster, assetName);
+    }
+
+    public Object Load_MysteryMonster(string assetName)
+    {
+        return Load_SubDirBundles(string.Format("mysterymonster/{0}", assetName), assetName);
+    }
+
+    public Object Load_NPC( string assetName )
+    {
+        return LoadResource( NPC, assetName );
+    }
+
+    public Object Load_Prefabs( string assetName )
+    {
+        string[] bundleName = assetName.Split('/');
+        return Load_SubDirBundles(string.Format("prefabs/{0}", bundleName[0].ToLower()), bundleName[1]);
+    }
+
+    public Object Load_Sound(string assetName)
+    {
+        string[] bundleName = assetName.Split('/');
+        return Load_SubDirBundles(string.Format("sound/{0}", bundleName[0].ToLower()), bundleName[1]);
+    }
+
+    public Object Load_Text( string assetName )
+    {
+        return LoadResource( Text, assetName );
+    }
+
+    public Object Load_Texture(string assetName)
+    {
+        string[] bundleName = assetName.Split('/');
+        return Load_SubDirBundles(string.Format("texture/{0}", bundleName[0].ToLower()), bundleName[1]);
+    }
+
+    public Object Load_RealTime(string assetName)
+    {
+        return LoadResource(RealTime, assetName);
+    }
+
+    public Object Load_Baby(string assetName)
+    {
+        string[] bundleName = assetName.Split('/');
+        return Load_SubDirBundles(string.Format("babycharacter/{0}", bundleName[0].ToLower()), bundleName[1]);
+    }
+
+    Object LoadResource( AssetBundle bundle, string assetName )
+    {
+        if( bundle == null ) return null;
+        if( string.IsNullOrEmpty( assetName ) ) return null;
+
+        Object obj = bundle.LoadAsset( assetName );
+
+        if( obj == null )
+        {
+            if( Application.isEditor ) Debug.LogWarning( "There is no asset with name \"" + assetName + "\" in " + bundle.name );
+
+            return null;
+        }
+
+        return obj;
+    }
+
+    Object LoadResource_Prefab(AssetBundle bundle, string assetName)
+    {
+        if (bundle == null) return null;
+        if (string.IsNullOrEmpty(assetName)) return null;
+
+        Object obj = bundle.LoadAsset(assetName + ".prefab");
+
+        if (obj == null)
+        {
+            if (Application.isEditor) Debug.LogWarning("There is no asset with name \"" + assetName + "\" in " + bundle.name);
+
+            return null;
+        }
+
+        return obj;
+    }
+
+    Object Load_SubDirBundles( string bundle, string assetName )
+    {
+        if ( string.IsNullOrEmpty( bundle ) ) return null;
+        if( dic_SubDirBundles == null ) dic_SubDirBundles = new Dictionary<string, AssetBundle>();
+
+        Object obj = null;
+        AssetBundle asset = null;
+        dic_SubDirBundles.TryGetValue( bundle, out asset );
+
+        if( asset != null ) obj = asset.LoadAsset( assetName );
+        else
+        {
+            PatchData data = PatchManager.instance.PatchList.FindDataWithAssetFileName( string.Format( "{0}.assetbundle", bundle ) );
+
+            if (data == null) Debug.LogWarning("not found patchdata \"" + assetName + "\" in " + bundle);
+            else if( Caching.IsVersionCached( string.Format( "{0}/{1}.assetbundle", PatchManager.patchURL, bundle ), data.hash ) )
+            {
+                using( UnityWebRequest www = UnityWebRequestAssetBundle.GetAssetBundle( string.Format( "{0}/{1}.assetbundle", PatchManager.patchURL, bundle ), data.hash ,0) )
+                {
+                    www.SendWebRequest();
+
+                    while (!www.isDone)
+                    {
+                    }
+
+                    asset = DownloadHandlerAssetBundle.GetContent(www);
+                    obj = asset.LoadAsset( assetName );
+
+                    dic_SubDirBundles.Add( bundle, asset );
+                    www.Dispose();
+                    asset = null;
+                }
+            }
+        }
+
+        if( obj == null && Application.isEditor )
+        {
+            Debug.LogWarning( "There is no asset with name \"" + assetName + "\" in " + bundle );
+            return null;
+        }
+
+        return obj;
+    }
+
+    AssetBundle Load_SubDirBundles_AssetBundle(string bundle, string assetName)
+    {
+        if (string.IsNullOrEmpty(bundle)) return null;
+        if (dic_SubDirBundles == null) dic_SubDirBundles = new Dictionary<string, AssetBundle>();
+
+        Object obj = null;
+        AssetBundle asset = null;
+        AssetBundle resultAsset = null;
+        dic_SubDirBundles.TryGetValue(bundle, out asset);
+
+        if (asset != null) resultAsset = asset;
+        else
+        {
+            PatchData data = PatchManager.instance.PatchList.FindDataWithAssetFileName(string.Format("{0}.assetbundle", bundle));
+
+            if (data == null) Debug.LogWarning("not found patchdata \"" + assetName + "\" in " + bundle);
+            else if (Caching.IsVersionCached(string.Format("{0}/{1}.assetbundle", PatchManager.patchURL, bundle), data.hash))
+            {
+                using (UnityWebRequest www = UnityWebRequestAssetBundle.GetAssetBundle(string.Format("{0}/{1}.assetbundle", PatchManager.patchURL, bundle), data.hash, 0))
+                {
+                    www.SendWebRequest();
+
+                    while (!www.isDone)
+                    {
+                    }
+
+                    asset = DownloadHandlerAssetBundle.GetContent(www);
+                    resultAsset = asset;
+
+                    dic_SubDirBundles.Add(bundle, asset);
+                    www.Dispose();
+                    asset = null;
+                }
+            }
+        }
+
+        if (resultAsset == null && Application.isEditor)
+        {
+            Debug.LogWarning("There is no asset with name \"" + assetName + "\" in " + bundle);
+            return null;
+        }
+
+        return resultAsset;
+    }
+
+    public bool IsExistAsset(int type, string assetName)
+    {
+        switch (type)
+        {
+            case 0:
+                {
+                    AssetBundle bundle;
+                    dic_SubDirBundles.TryGetValue(string.Format("atlas/{0}", assetName), out bundle);
+                    return bundle.Contains(assetName);
+
+                    //return bundle_Atlas.Contains(assetName);
+                }
+            case 1:
+                return bundle_FX.Contains(assetName);
+            case 2:
+                return bundle_GachaBanner.Contains(assetName);
+            case 3:
+                return bundle_Monster.Contains(assetName);
+            case 4:
+                return bundle_NPC.Contains(assetName);
+            case 5:
+                return bundle_Text.Contains(assetName);
+            case 6:
+                {
+                    AssetBundle bundle;
+                    string[] bundleName = assetName.Split('/');
+                    dic_SubDirBundles.TryGetValue(string.Format("character/{0}", bundleName[0].ToLower()), out bundle);
+                    return bundle.Contains(bundleName[1]);
+                }
+            case 7:
+                {
+                    AssetBundle bundle;
+                    string[] bundleName = assetName.Split('/');
+                    dic_SubDirBundles.TryGetValue(string.Format("sound/{0}", bundleName[0].ToLower()), out bundle);
+                    return bundle.Contains(bundleName[1]);
+                }
+            case 8:
+                {
+                    AssetBundle bundle;
+                    string[] bundleName = assetName.Split('/');
+                    dic_SubDirBundles.TryGetValue(string.Format("texture/{0}", bundleName[0].ToLower()), out bundle);
+                    return bundle.Contains(bundleName[1]);
+                }
+            case 9:
+                {
+                    AssetBundle bundle;
+                    string[] bundleName = assetName.Split('/');
+                    dic_SubDirBundles.TryGetValue(string.Format("prefabs/{0}", bundleName[0].ToLower()), out bundle);
+                    return bundle.Contains(bundleName[1]);
+                }
+            case 10:
+                {
+                    AssetBundle bundle;
+                    dic_SubDirBundles.TryGetValue(string.Format("mysterymonster/{0}", assetName), out bundle);
+                    return bundle.Contains(assetName);
+
+                    //return bundle_MysteryMonster.Contains(assetName);
+
+                }
+
+        }
+        return false;
+    }
+
+    bool atlasLoad = false;
+    string[] atlasList = { "main", "item", "girlatlas", "uiglobal", "uititleemblem", "uiskill", "portrait", "uilobbymenu", "uiaccessory", "uifullimage", // 10개
+        "uicostume", "uieventitem", "uispecialicon", "uimysterymonster", "uiguildemblem", "uishop", "uiunique", "uigrade", "uiiconillust", "lobbyiconeffect1", // 10개
+        "uibackground", "uidate", "uibtneffect1", "uibtneffectmainevent", "uihorserace", "uiracehorse" };
+    public void LoadAtlas()
+    {
+        if(atlasLoad == false)
+        {
+            for(int i = 0; i < atlasList.Length; ++i)
+            {
+                Load_SubDirBundles(string.Format("atlas/{0}", atlasList[i]), atlasList[i]);
+            }
+
+            atlasLoad = true;
+        }
+    }
+
+    public void PreLoad()
+    {
+        Debug.Log("PreLoad Start");
+        LoadAtlas();
+        Debug.Log("PreLoad LoadAtlas End");
+        if (bundle_FX == null)
+            bundle_FX = FX;
+        Debug.Log("PreLoad 11111111111111111111111111111111");
+        if (bundle_GachaBanner == null)
+            bundle_GachaBanner = GachaBaaner;
+        Debug.Log("PreLoad 22222222222222222222222222222222");
+        if (bundle_Monster == null)
+            bundle_Monster = Monster;
+        Debug.Log("PreLoad 33333333333333333333333333333333");
+        if (bundle_NPC == null)
+            bundle_NPC = NPC;
+        Debug.Log("PreLoad 444444444444444444444444444444444");
+        if (bundle_Text == null)
+            bundle_Text = Text;
+        Debug.Log("PreLoad 55555555555555555555555555555555");
+        /*
+        if (bundle_RealTime == null)
+            bundle_RealTime = RealTime;
+        */
+        Debug.Log("PreLoad End");
+    }
+
+    public void Reload()
+    {
+        if (bundle_FX != null) bundle_FX.Unload(true);
+        if (bundle_GachaBanner != null) bundle_GachaBanner.Unload(true);
+        if (bundle_Monster != null) bundle_Monster.Unload(true);
+        if (bundle_NPC != null) bundle_NPC.Unload(true);
+        if (bundle_Text != null) bundle_Text.Unload(true);
+        if (bundle_RealTime != null) bundle_RealTime.Unload(true);
+
+        bundle_FX = null;
+        bundle_GachaBanner = null;
+        bundle_Monster = null;
+        bundle_NPC = null;
+        bundle_Text = null;
+        bundle_RealTime = null;
+
+        if (dic_SubDirBundles != null)
+        {
+            var iter = dic_SubDirBundles.GetEnumerator();
+            while (iter.MoveNext())
+            {
+                iter.Current.Value.Unload(true);
+            }
+
+            dic_SubDirBundles.Clear();
+            atlasLoad = false;
+        }
+
+        PreLoad();
+    }
+
+    public void ReloadRealTime()
+    {
+        if (bundle_RealTime != null) bundle_RealTime.Unload(true);
+
+        bundle_RealTime = null;
+
+        if (bundle_RealTime == null) bundle_RealTime = RealTime;
+    }
+
+    public void UnloadUnusedAssets( bool isForceUnload )
+    {
+        if( isForceUnload )
+        {
+            if ( bundle_FX != null ) bundle_FX.Unload( isForceUnload );
+            if( bundle_GachaBanner != null ) bundle_GachaBanner.Unload( isForceUnload );
+            if( bundle_Monster != null ) bundle_Monster.Unload( isForceUnload );
+            if( bundle_NPC != null ) bundle_NPC.Unload( isForceUnload );
+            if( bundle_Text != null ) bundle_Text.Unload( isForceUnload );
+
+            bundle_FX = null;
+            bundle_GachaBanner = null;
+            bundle_Monster = null;
+            bundle_NPC = null;
+            bundle_Text = null;
+
+            if (dic_SubDirBundles != null)
+            {
+                var iter = dic_SubDirBundles.GetEnumerator();
+                while (iter.MoveNext())
+                {
+                    iter.Current.Value.Unload(true);
+                }
+
+                dic_SubDirBundles.Clear();
+                atlasLoad = false;
+            }
+        }
+
+        if( countUnload == 100 )
+        {
+            countUnload = 0;
+
+            if (dic_SubDirBundles != null)
+            {
+                var iter = dic_SubDirBundles.GetEnumerator();
+                while (iter.MoveNext())
+                {
+                    iter.Current.Value.Unload(true);
+                }
+
+                dic_SubDirBundles.Clear();
+                atlasLoad = false;
+            }
+
+            Resources.UnloadUnusedAssets();
+            System.GC.Collect();
+
+            Debug.LogWarning(string.Format("Heap Memory : {0}MB    Unity Memory : {1}MB", Profiler.usedHeapSizeLong / Mathf.Pow(1024f, 2), System.GC.GetTotalMemory(true) / Mathf.Pow(1024f, 2)));
+        }
+        else countUnload++;
+    }
+}
