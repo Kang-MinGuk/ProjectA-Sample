@@ -1,0 +1,145 @@
+using System.Collections.Generic;
+using UnityEngine;
+using System;
+
+public class GuildManager : MonoBehaviour
+{
+    // Singleton Class
+    public static GuildManager instance = null;
+    public GameObject popup = null;
+
+    void Awake()
+    {
+        if (instance == null)
+        {
+            instance = this;
+        }
+        else if (instance != this)
+        {
+            Destroy(gameObject);
+        }
+    }
+    void OnDestroy() { instance = null; }
+
+    public enum SP_Guild
+    {
+        id = 0,             
+        name,               
+        level,              
+        guildpoint,         
+        guildmembermax,     
+        jointype,           
+        title,              
+        guildmasterid,      
+
+        createtime,         
+        membercount,        
+        guildexp,           
+
+        guildpointtotal,    
+        GuildSubMasterID,   
+        MasterTransferTime,     
+        SubMasterTransferTime,  
+        guild_emblem,           
+        guild_Haveemblem,       
+        GuildSubMaster2ID,
+
+        max,
+    }
+
+    public enum ST_Guildmember
+    {
+        id = 0,
+        guildindex,
+        joindatetime,
+        grade,                     
+        pointgrade,                
+        lastjoincheckdatetime,
+        myguildpoint,
+        totalpower,                
+        vipgrade,                  
+        nickname,
+
+        lastjoincheck_id,          
+        myguildpointtotal,
+        mygivepoint,
+        lastconnecttime,
+        StoreBuyCount,
+        Contribution,
+        temp8,
+        temp9,
+        temp10,
+
+        max,
+    }
+
+    public enum ST_Guildskill_passive
+    {
+        max = 10,
+    }
+    public enum ST_Guildskill_active
+    {
+        max = 10,
+    }
+
+    public enum guildsubdata
+    {
+        rank,               
+        mygrade,            
+        myguildpoint,       
+        StoreBuyCount,      
+
+        max = 10,
+    }
+
+    public enum guildmembergrade
+    {
+        none = 0,
+        master = 1,
+        submaster = 2,
+        temp1 = 3,
+        temp2 = 4,
+        normal = 5,
+        waiting = 6,
+    }
+
+    public string[] guildData = new string[(int)SP_Guild.max];
+    public string[] guildsubData = new string[(int)guildsubdata.max];
+    public Dictionary<string, string[]> guildmembers = new Dictionary<string, string[]>();
+    public Dictionary<string, string[]> guildmembers_wait = new Dictionary<string, string[]>();
+
+    public string[] guildskillpassive = new string[(int)ST_Guildskill_passive.max];
+    public string[] guildskillactive = new string[(int)ST_Guildskill_active.max];
+
+    public int getMissionCheckGuildmembercount()
+    {
+        int retvalue = 0;
+        foreach( var member in guildmembers )
+        {
+            string[] guildmember = member.Value;
+
+            string lastjoincheckdatetime = guildmember[(int)ST_Guildmember.lastjoincheckdatetime];
+
+            DateTime now = DateTime.Now;
+            if (lastjoincheckdatetime == now.ToString("yyyy-MM-dd") && lastjoincheckdatetime.Length > 0)
+            {
+                retvalue++;
+            }
+        }
+
+        return retvalue;
+    }
+
+    public void setguildskill( string passivedata, string activedata )
+    {
+        string[] passivedatas = passivedata.Split('#');
+
+        for (int i = 0; i < (int)ST_Guildskill_passive.max; i++)
+            guildskillpassive[i] = passivedatas[i];
+
+        string[] activedatas = activedata.Split('#');
+
+        for (int i = 0; i < (int)ST_Guildskill_active.max; i++)
+            guildskillactive[i] = activedatas[i];
+    }
+}
